@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   FileText,
   Upload,
@@ -25,8 +25,11 @@ import {
   Download,
   Plus,
   ShieldCheck,
+  MessageCircle,
+  PanelRightClose,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback } from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
@@ -99,7 +102,13 @@ export function Dashboard() {
   const [qaAnswer, setQaAnswer] = useState<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> } | null>(null)
   const [qaLoading, setQaLoading] = useState(false)
   const [toolsExpanded, setToolsExpanded] = useState(false)
+  const [qaPanelOpen, setQaPanelOpen] = useState(false)
   const [gapResult, setGapResult] = useState<{ overlap: Array<{ task_a: ExtractionTask; task_b: ExtractionTask; similarity: number }>; unique_to_a: ExtractionTask[]; unique_to_b: ExtractionTask[]; label_a: string; label_b: string } | null>(null)
+  const taskReviewRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (docId) setToolsExpanded(true)
+  }, [docId])
   const [gapLoading, setGapLoading] = useState(false)
   const [regulationVersions, setRegulationVersions] = useState<Array<{ doc_id: string; regulation_name: string; source_filename: string; processed_at: string; version_label: string }>>([])
 
@@ -293,6 +302,12 @@ export function Dashboard() {
     if (taskFilterConfidence === 'low' && (t.confidence != null && t.confidence >= 80)) return false
     return true
   })
+
+  useEffect(() => {
+    if (tasks.length > 0 && taskReviewRef.current) {
+      taskReviewRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [tasks.length])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -515,6 +530,16 @@ export function Dashboard() {
             <ShieldCheck size={16} />
             Audit trail
           </a>
+          {docId && (
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); setPage('main'); setSidebarOpen(false); setQaPanelOpen(true); }}
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              <MessageCircle size={16} />
+              Q&A
+            </a>
+          )}
           <Tooltip content={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             <button
               type="button"
@@ -540,9 +565,24 @@ export function Dashboard() {
             />
           ) : (
           <>
-          <header className="main-header">
-            <h1>RegTranslate</h1>
-            <p>Regulatory PDF → Developer tasks → Jira / GitHub</p>
+          <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+            <div>
+              <h1>RegTranslate</h1>
+              <p>Regulatory PDF → Developer tasks → Jira / GitHub</p>
+            </div>
+            {docId && page === 'main' && (
+              <Tooltip content={qaPanelOpen ? 'Close Q&A panel' : 'Open Q&A panel'}>
+                <button
+                  type="button"
+                  className={`btn ${qaPanelOpen ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setQaPanelOpen(!qaPanelOpen)}
+                  aria-expanded={qaPanelOpen}
+                >
+                  <MessageCircle size={18} />
+                  Q&A
+                </button>
+              </Tooltip>
+            )}
           </header>
 
           {error && (
@@ -718,23 +758,10 @@ export function Dashboard() {
             <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setToolsExpanded(!toolsExpanded); if (!toolsExpanded) loadRegulationVersions(); }} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 {toolsExpanded ? <ChevronDown size={16} style={{ transform: 'rotate(180deg)' }} /> : <ChevronDown size={16} />}
-                Q&A, Gap Analysis & Regulation Versions
+                Gap analysis & Regulation versions
               </button>
               {toolsExpanded && (
                 <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div>
-                    <h4 style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Compliance Q&A</h4>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                      <input type="text" placeholder="Ask a question about the regulation..." value={qaQuestion} onChange={(e) => setQaQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleQaAsk()} style={{ flex: 1 }} />
-                      <button type="button" className="btn btn-primary btn-sm" onClick={handleQaAsk} disabled={qaLoading}>{qaLoading ? <Loader2 size={16} className="spinner" /> : 'Ask'}</button>
-                    </div>
-                    {qaAnswer && (
-                      <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                        <p>{qaAnswer.answer}</p>
-                        {qaAnswer.sources?.length > 0 && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Sources: {qaAnswer.sources.length} chunk(s)</p>}
-                      </div>
-                    )}
-                  </div>
                   {tasks.length >= 2 && (
                     <div>
                       <h4 style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Gap analysis</h4>
@@ -779,7 +806,7 @@ export function Dashboard() {
           )}
 
         {tasks.length > 0 && (
-          <section className="step">
+          <section className="step" ref={taskReviewRef}>
             <div className="step-header" style={{ flexWrap: 'wrap', gap: 'var(--space-4)' }}>
               <span className="step-number">3</span>
               <h2 className="step-title">Task review</h2>
@@ -963,6 +990,56 @@ export function Dashboard() {
           )}
         </div>
       </main>
+
+      {docId && (
+        <>
+          <div
+            className={`qa-panel-tab ${qaPanelOpen ? 'open' : ''}`}
+            onClick={() => !qaPanelOpen && setQaPanelOpen(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && !qaPanelOpen && setQaPanelOpen(true)}
+            aria-label="Open Q&A panel"
+          >
+            <MessageCircle size={20} />
+            <span>Q&A</span>
+          </div>
+          <aside className={`qa-panel ${qaPanelOpen ? 'open' : ''}`}>
+            <div className="qa-panel-header">
+              <h3>Compliance Q&A</h3>
+              <Tooltip content="Close panel">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setQaPanelOpen(false)} aria-label="Close Q&A panel">
+                  <PanelRightClose size={18} />
+                </button>
+              </Tooltip>
+            </div>
+            <div className="qa-panel-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>Ask questions about the regulation.</p>
+              <div className="input-group" style={{ marginBottom: 'var(--space-3)' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. What does the regulation say about encryption?"
+                  value={qaQuestion}
+                  onChange={(e) => setQaQuestion(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleQaAsk()}
+                />
+                <button type="button" className="btn btn-primary" style={{ marginTop: 'var(--space-2)' }} onClick={handleQaAsk} disabled={qaLoading}>
+                  {qaLoading ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
+                  Ask
+                </button>
+              </div>
+              {qaAnswer && (
+                <div className="qa-answer qa-answer-markdown">
+                  <ReactMarkdown>{qaAnswer.answer}</ReactMarkdown>
+                  {qaAnswer.sources?.length > 0 && (
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-2)' }}>Sources: {qaAnswer.sources.length} chunk(s)</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   )
 }
