@@ -28,6 +28,14 @@ def _format_body(t: ExtractionTask) -> str:
     if t.also_satisfies:
         parts.append("")
         parts.append("**Also satisfies:** " + ", ".join(t.also_satisfies))
+    evidence = getattr(t, "evidence_links", None) or []
+    if evidence:
+        parts.append("")
+        parts.append("**Evidence:**")
+        for e in evidence:
+            url = getattr(e, "url", "")
+            label = getattr(e, "label", url) or url
+            parts.append(f"- [{label}]({url})")
     return "\n".join(parts)
 
 

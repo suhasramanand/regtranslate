@@ -145,3 +145,59 @@ export async function exportToGitHub(params: {
     }),
   })
 }
+
+// --- Regulation version tracking ---
+export async function getRegulationVersions(regulationName?: string, limit?: number): Promise<{ versions: Array<{ doc_id: string; regulation_name: string; source_filename: string; content_hash: string; processed_at: string; version_label: string; chunk_count: number }> }> {
+  const params = new URLSearchParams()
+  if (regulationName) params.set('regulation_name', regulationName)
+  if (limit != null) params.set('limit', String(limit))
+  const q = params.toString() ? `?${params}` : ''
+  return fetchApi(`/regulation/versions${q}`)
+}
+
+export async function checkRegulationUpdate(docId: string, file: File): Promise<{ needs_update: boolean; current_hash?: string; new_hash: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/regulation/check-update?doc_id=${encodeURIComponent(docId)}`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? res.statusText)
+  }
+  return res.json()
+}
+
+// --- Compliance Q&A agent ---
+export async function qaAsk(docId: string, question: string): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
+  return fetchApi('/qa', { method: 'POST', body: JSON.stringify({ doc_id: docId, question }) })
+}
+
+// --- Cross-regulation gap analysis ---
+export async function gapAnalysis(params: { tasks_a: ExtractionTask[]; tasks_b: ExtractionTask[]; label_a?: string; label_b?: string }): Promise<{
+  overlap: Array<{ task_a: ExtractionTask; task_b: ExtractionTask; similarity: number }>
+  unique_to_a: ExtractionTask[]
+  unique_to_b: ExtractionTask[]
+  label_a: string
+  label_b: string
+}> {
+  return fetchApi('/gap-analysis', {
+    method: 'POST',
+    body: JSON.stringify({
+      tasks_a: params.tasks_a,
+      tasks_b: params.tasks_b,
+      label_a: params.label_a ?? 'A',
+      label_b: params.label_b ?? 'B',
+    }),
+  })
+}
+
+// --- Confidence calibration ---
+export async function submitCalibrationFeedback(taskId: string, title: string, correct: boolean): Promise<{ ok: boolean }> {
+  return fetchApi('/calibration/feedback', { method: 'POST', body: JSON.stringify({ task_id: taskId, title, correct }) })
+}
+
+export async function getCalibrationStats(): Promise<{ total_feedback_entries: number; tasks_with_feedback: number; average_accuracy: number }> {
+  return fetchApi('/calibration/stats')
+}

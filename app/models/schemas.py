@@ -21,6 +21,13 @@ class ExtractionSubtask(BaseModel):
     description: str = ""
 
 
+class EvidenceLink(BaseModel):
+    """Link to evidence (URL or path) for compliance attestation."""
+
+    url: str
+    label: str = ""
+
+
 class ExtractionTask(BaseModel):
     """Developer task extracted from regulatory text."""
 
@@ -36,6 +43,7 @@ class ExtractionTask(BaseModel):
     also_satisfies: list[str] = Field(default_factory=list)
     confidence: int | None = None
     subtasks: list[ExtractionSubtask] = Field(default_factory=list)
+    evidence_links: list[EvidenceLink] = Field(default_factory=list)
 
 
 class TaskExportRequest(BaseModel):

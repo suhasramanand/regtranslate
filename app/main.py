@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.models.schemas import EvidenceLink
 from app.services import embeddings, pdf_processor, task_generator, vector_store
 
 app = FastAPI(
@@ -111,9 +112,9 @@ async def process_document(
         raise HTTPException(400, "File must be a PDF")
 
     doc_id = str(uuid.uuid4())
+    content = await file.read()
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         try:
-            content = await file.read()
             tmp.write(content)
             tmp.flush()
             path = Path(tmp.name)
@@ -129,6 +130,15 @@ async def process_document(
 
     if not chunks:
         raise HTTPException(422, "No text extracted from PDF")
+
+    from app.services import regulation_version
+    regulation_version.record_version(
+        doc_id=doc_id,
+        regulation_name=regulation_name,
+        source_filename=file.filename or "upload.pdf",
+        content=content,
+        chunk_count=len(chunks),
+    )
 
     chunk_dicts = [
         {"text": c.text, "page": c.page, "section": c.section, "chunk_index": c.chunk_index}
@@ -174,10 +184,9 @@ def extract_tasks_endpoint(req: ExtractRequest) -> ExtractResponse:
     """
     Run RAG + LLM extraction on a processed document.
     Optionally deduplicate across regulations. Returns tasks for review and export.
-    Set return_coverage=True for Quick Test: pages/sections in RAG chunks (Parts I–IV, Section 4).
-    product_context + rag_query enable product-focused extraction (Chat flow).
+    Applies confidence calibration from user feedback.
     """
-    from app.services import deduplication
+    from app.services import confidence_calibration, deduplication
 
     try:
         raw, coverage = task_generator.extract_tasks(
@@ -187,12 +196,19 @@ def extract_tasks_endpoint(req: ExtractRequest) -> ExtractResponse:
             rag_query=req.rag_query or task_generator.RAG_QUERY,
         )
         tasks = deduplication.deduplicate(raw) if req.dedupe and raw else raw
+        out = []
+        for t in tasks:
+            d = t.model_dump()
+            cal = confidence_calibration.get_calibrated_confidence(t.task_id, t.title, t.confidence)
+            if cal is not None:
+                d["confidence"] = cal
+            out.append(d)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     return ExtractResponse(
-        tasks=[t.model_dump() for t in tasks],
+        tasks=out,
         coverage=coverage if req.return_coverage else None,
     )
 
@@ -226,6 +242,18 @@ class GitHubExportResponse(BaseModel):
     urls: list[str]
 
 
+def _parse_evidence(links: list | None) -> list[EvidenceLink]:
+    if not links:
+        return []
+    out = []
+    for e in links:
+        if isinstance(e, dict) and e.get("url"):
+            out.append(EvidenceLink(url=e["url"], label=e.get("label", "")))
+        elif isinstance(e, EvidenceLink):
+            out.append(e)
+    return out
+
+
 @app.post("/export/jira", response_model=JiraExportResponse)
 def export_to_jira_endpoint(req: JiraExportRequest) -> JiraExportResponse:
     """Export selected tasks to Jira. Requires project_key and credentials."""
@@ -238,6 +266,7 @@ def export_to_jira_endpoint(req: JiraExportRequest) -> JiraExportResponse:
             ExtractionSubtask(title=s.get("title", ""), description=s.get("description", ""))
             for s in (t.get("subtasks") or [])
         ]
+        evidence = _parse_evidence(t.get("evidence_links"))
         tasks.append(
             ExtractionTask(
                 task_id=t.get("task_id", ""),
@@ -252,6 +281,7 @@ def export_to_jira_endpoint(req: JiraExportRequest) -> JiraExportResponse:
                 also_satisfies=t.get("also_satisfies", []),
                 confidence=t.get("confidence"),
                 subtasks=subtasks,
+                evidence_links=evidence,
             )
         )
     try:
@@ -287,6 +317,7 @@ def export_to_github_endpoint(req: GitHubExportRequest) -> GitHubExportResponse:
             ExtractionSubtask(title=s.get("title", ""), description=s.get("description", ""))
             for s in (t.get("subtasks") or [])
         ]
+        evidence = _parse_evidence(t.get("evidence_links"))
         tasks.append(
             ExtractionTask(
                 task_id=t.get("task_id", ""),
@@ -301,6 +332,7 @@ def export_to_github_endpoint(req: GitHubExportRequest) -> GitHubExportResponse:
                 also_satisfies=t.get("also_satisfies", []),
                 confidence=t.get("confidence"),
                 subtasks=subtasks,
+                evidence_links=evidence,
             )
         )
     try:
@@ -312,6 +344,92 @@ def export_to_github_endpoint(req: GitHubExportRequest) -> GitHubExportResponse:
         raise HTTPException(422, str(e))
     except Exception as e:
         raise HTTPException(500, f"GitHub export failed: {e}")
+
+
+# --- Regulation version tracking ---
+
+
+@app.get("/regulation/versions")
+def regulation_versions(regulation_name: str | None = None, limit: int = 100):
+    """List regulation document versions."""
+    from app.services import regulation_version
+    entries = regulation_version.list_versions(regulation_name=regulation_name, limit=limit)
+    return {"versions": [{"doc_id": v.doc_id, "regulation_name": v.regulation_name, "source_filename": v.source_filename, "content_hash": v.content_hash, "processed_at": v.processed_at, "version_label": v.version_label, "chunk_count": v.chunk_count} for v in entries]}
+
+
+class CheckUpdateRequest(BaseModel):
+    doc_id: str
+
+
+@app.post("/regulation/check-update")
+async def regulation_check_update(file: UploadFile = File(...), doc_id: str = ""):
+    """Check if a document needs re-processing (content changed). Pass doc_id as query param."""
+    if not doc_id.strip():
+        raise HTTPException(400, "doc_id query param required")
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "PDF file required")
+    content = await file.read()
+    from app.services import regulation_version
+    result = regulation_version.check_update_needed(doc_id, content)
+    return result
+
+
+# --- Compliance Q&A agent ---
+
+
+class QARequest(BaseModel):
+    doc_id: str
+    question: str
+
+
+@app.post("/qa")
+def qa_agent(req: QARequest):
+    """Answer compliance questions using RAG + LLM over the document."""
+    from app.services import qa_agent as qa_svc
+    result = qa_svc.answer_question(req.doc_id, req.question)
+    return result
+
+
+# --- Cross-regulation gap analysis ---
+
+
+class GapAnalysisRequest(BaseModel):
+    tasks_a: list[dict]
+    tasks_b: list[dict]
+    label_a: str = "A"
+    label_b: str = "B"
+
+
+@app.post("/gap-analysis")
+def gap_analysis_endpoint(req: GapAnalysisRequest):
+    """Compare two task sets and return overlap, unique_to_a, unique_to_b."""
+    from app.services import gap_analysis
+    result = gap_analysis.analyze_gaps(req.tasks_a, req.tasks_b, req.label_a, req.label_b)
+    return result
+
+
+# --- Confidence calibration ---
+
+
+class CalibrationFeedbackRequest(BaseModel):
+    task_id: str
+    title: str
+    correct: bool
+
+
+@app.post("/calibration/feedback")
+def calibration_feedback(req: CalibrationFeedbackRequest):
+    """Submit user feedback (correct/incorrect) for confidence calibration."""
+    from app.services import confidence_calibration
+    confidence_calibration.submit_feedback(req.task_id, req.title, req.correct)
+    return {"ok": True}
+
+
+@app.get("/calibration/stats")
+def calibration_stats():
+    """Get calibration statistics."""
+    from app.services import confidence_calibration
+    return confidence_calibration.get_stats()
 
 
 # --- Export history ---

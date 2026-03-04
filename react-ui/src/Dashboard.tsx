@@ -27,7 +27,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs } from './api'
+import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback } from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
@@ -95,6 +95,13 @@ export function Dashboard() {
   const [auditLoading, setAuditLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [coverage, setCoverage] = useState<{ chunk_count: number; pages_summary: string; sections: string[]; section_4_in_chunks: boolean } | null>(null)
+  const [qaQuestion, setQaQuestion] = useState('')
+  const [qaAnswer, setQaAnswer] = useState<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> } | null>(null)
+  const [qaLoading, setQaLoading] = useState(false)
+  const [toolsExpanded, setToolsExpanded] = useState(false)
+  const [gapResult, setGapResult] = useState<{ overlap: Array<{ task_a: ExtractionTask; task_b: ExtractionTask; similarity: number }>; unique_to_a: ExtractionTask[]; unique_to_b: ExtractionTask[]; label_a: string; label_b: string } | null>(null)
+  const [gapLoading, setGapLoading] = useState(false)
+  const [regulationVersions, setRegulationVersions] = useState<Array<{ doc_id: string; regulation_name: string; source_filename: string; processed_at: string; version_label: string }>>([])
 
   useEffect(() => {
     getExportConfig()
@@ -125,6 +132,55 @@ export function Dashboard() {
       .then(({ entries }) => setAuditEntries(entries))
       .catch(() => setAuditEntries([]))
       .finally(() => setAuditLoading(false))
+  }
+
+  const loadRegulationVersions = () => {
+    getRegulationVersions(undefined, 20)
+      .then(({ versions }) => setRegulationVersions(versions))
+      .catch(() => setRegulationVersions([]))
+  }
+
+  const handleQaAsk = async () => {
+    if (!docId || !qaQuestion.trim()) return
+    setQaLoading(true)
+    setQaAnswer(null)
+    try {
+      const res = await qaAsk(docId, qaQuestion.trim())
+      setQaAnswer(res)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Q&A failed')
+    } finally {
+      setQaLoading(false)
+    }
+  }
+
+  const handleGapAnalysis = async () => {
+    if (tasks.length < 2) {
+      setError('Need at least 2 tasks. Split: first half vs second half.')
+      return
+    }
+    setGapLoading(true)
+    setGapResult(null)
+    try {
+      const mid = Math.floor(tasks.length / 2)
+      const res = await gapAnalysis({
+        tasks_a: tasks.slice(0, mid),
+        tasks_b: tasks.slice(mid),
+        label_a: 'First half',
+        label_b: 'Second half',
+      })
+      setGapResult(res)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gap analysis failed')
+    } finally {
+      setGapLoading(false)
+    }
+  }
+
+  const handleCalibrationFeedback = (taskId: string, title: string, correct: boolean) => {
+    submitCalibrationFeedback(taskId, title, correct)
+      .then(() => setSuccess('Feedback recorded'))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Feedback failed'))
   }
 
   const saveExportPreset = () => {
@@ -658,6 +714,56 @@ export function Dashboard() {
             </div>
           )}
 
+          {docId && (
+            <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setToolsExpanded(!toolsExpanded); if (!toolsExpanded) loadRegulationVersions(); }} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                {toolsExpanded ? <ChevronDown size={16} style={{ transform: 'rotate(180deg)' }} /> : <ChevronDown size={16} />}
+                Q&A, Gap Analysis & Regulation Versions
+              </button>
+              {toolsExpanded && (
+                <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                  <div>
+                    <h4 style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Compliance Q&A</h4>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                      <input type="text" placeholder="Ask a question about the regulation..." value={qaQuestion} onChange={(e) => setQaQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleQaAsk()} style={{ flex: 1 }} />
+                      <button type="button" className="btn btn-primary btn-sm" onClick={handleQaAsk} disabled={qaLoading}>{qaLoading ? <Loader2 size={16} className="spinner" /> : 'Ask'}</button>
+                    </div>
+                    {qaAnswer && (
+                      <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+                        <p>{qaAnswer.answer}</p>
+                        {qaAnswer.sources?.length > 0 && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Sources: {qaAnswer.sources.length} chunk(s)</p>}
+                      </div>
+                    )}
+                  </div>
+                  {tasks.length >= 2 && (
+                    <div>
+                      <h4 style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Gap analysis</h4>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={handleGapAnalysis} disabled={gapLoading}>
+                        {gapLoading ? <Loader2 size={14} className="spinner" /> : 'Compare first half vs second half'}
+                      </button>
+                      {gapResult && (
+                        <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)' }}>
+                          <p>Overlap: {gapResult.overlap.length} · Unique to {gapResult.label_a}: {gapResult.unique_to_a.length} · Unique to {gapResult.label_b}: {gapResult.unique_to_b.length}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <h4 style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Regulation versions</h4>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={loadRegulationVersions}>Refresh</button>
+                    {regulationVersions.length > 0 && (
+                      <ul style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', listStyle: 'none', padding: 0 }}>
+                        {regulationVersions.slice(0, 5).map((v, i) => (
+                          <li key={i} style={{ padding: 'var(--space-1) 0' }}>{v.regulation_name} · {v.source_filename} · {v.version_label}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {coverage && tasks.length > 0 && (
             <div className="compliance-checklist card">
               <h3 className="compliance-checklist-title">Compliance coverage</h3>
@@ -729,6 +835,7 @@ export function Dashboard() {
                   onToggle={() => toggleTask(task.task_id)}
                   onUpdate={(updates) => updateTask(task.task_id, updates)}
                   onCopyMarkdown={() => copyTaskAsMarkdown(task)}
+                  onCalibrationFeedback={handleCalibrationFeedback}
                 />
               ))}
             </div>
@@ -1019,17 +1126,20 @@ function TaskCard({
   onToggle,
   onUpdate,
   onCopyMarkdown,
+  onCalibrationFeedback,
 }: {
   task: ExtractionTask
   selected: boolean
   onToggle: () => void
   onUpdate: (updates: Partial<ExtractionTask>) => void
   onCopyMarkdown?: () => void
+  onCalibrationFeedback?: (taskId: string, title: string, correct: boolean) => void
 }) {
   const ac = task.acceptance_criteria ?? []
   const subs = task.subtasks ?? []
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
+  const evidenceLinks = task.evidence_links ?? []
   const [editForm, setEditForm] = useState({
     title: task.title ?? '',
     description: task.description ?? '',
@@ -1037,6 +1147,7 @@ function TaskCard({
     responsible_role: task.responsible_role ?? '',
     acceptance_criteria: ac.join('\n'),
     subtasks: subs.map((s) => `${s?.title ?? ''} | ${s?.description ?? ''}`).join('\n'),
+    evidence_links: evidenceLinks.map((e) => `${e.url} | ${e.label || ''}`).join('\n'),
   })
 
   const handleSave = () => {
@@ -1056,6 +1167,18 @@ function TaskCard({
         return { title: trimmed, description: '' }
       })
       .filter((s) => s.title)
+    const ev = editForm.evidence_links
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trim()
+        if (!trimmed) return null
+        if (trimmed.includes(' | ')) {
+          const [url, label] = trimmed.split(' | ', 2)
+          return { url: url.trim(), label: label?.trim() || '' }
+        }
+        return { url: trimmed, label: '' }
+      })
+      .filter((x): x is { url: string; label: string } => x != null && !!x.url)
     onUpdate({
       title: editForm.title,
       description: editForm.description,
@@ -1063,6 +1186,7 @@ function TaskCard({
       responsible_role: editForm.responsible_role,
       acceptance_criteria: ac,
       subtasks: sub,
+      evidence_links: ev,
     })
     setEditing(false)
   }
@@ -1130,6 +1254,22 @@ function TaskCard({
             </>
           )}
           <div className="task-card-meta">Role: {task.responsible_role}</div>
+          {evidenceLinks.length > 0 && (
+            <div style={{ marginTop: 'var(--space-2)' }}>
+              <strong style={{ fontSize: 'var(--text-xs)' }}>Evidence</strong>
+              <ul className="task-card-list">
+                {evidenceLinks.map((e, i) => (
+                  <li key={i}><a href={e.url} target="_blank" rel="noopener noreferrer">{e.label || e.url}</a></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {onCalibrationFeedback && (
+            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCalibrationFeedback(task.task_id, task.title, true)} title="Correct">👍</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCalibrationFeedback(task.task_id, task.title, false)} title="Incorrect">👎</button>
+            </div>
+          )}
 
           {!editing ? (
             <div className="task-card-actions">
@@ -1184,6 +1324,10 @@ function TaskCard({
               <div className="input-group">
                 <label>Subtasks (Title | Description per line)</label>
                 <textarea value={editForm.subtasks} onChange={(e) => setEditForm((f) => ({ ...f, subtasks: e.target.value }))} rows={2} />
+              </div>
+              <div className="input-group">
+                <label>Evidence links (URL | Label per line)</label>
+                <textarea value={editForm.evidence_links} onChange={(e) => setEditForm((f) => ({ ...f, evidence_links: e.target.value }))} rows={2} placeholder="https://... | Screenshot" />
               </div>
               <div className="edit-form-actions">
                 <button className="btn btn-primary btn-sm" onClick={handleSave}>
