@@ -192,6 +192,17 @@
   outline-offset: 2px;
 }
 
+.hero-cta-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  box-shadow: none;
+}
+
+.hero-cta-secondary:hover {
+  background: rgba(13, 148, 136, 0.08);
+}
+
 .hero-faq {
   width: 100%;
   text-align: left;

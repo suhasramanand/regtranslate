@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RegTranslate — Product Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .demo-container {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0f;
+    }
+    .zoom-wrapper {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .zoom-wrapper.zoom-in { transform: scale(1.15); }
+    .zoom-wrapper.zoom-focus { transform: scale(1.25); }
+    .app-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.4);
+    }
+    .message-overlay {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px 48px 48px;
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+      color: white;
+      text-align: center;
+      pointer-events: none;
+    }
+    .message-overlay h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+      opacity: 0;
+      animation: fadeIn 0.5s ease forwards;
+    }
+    .message-overlay p {
+      font-size: 1rem;
+      color: rgba(255,255,255,0.8);
+      opacity: 0;
+      animation: fadeIn 0.5s ease 0.15s forwards;
+    }
+    @keyframes fadeIn { to { opacity: 1; } }
+    .scene-indicator {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.7);
+      z-index: 100;
+    }
+    .controls {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      display: flex;
+      gap: 8px;
+      z-index: 200;
+      pointer-events: auto;
+    }
+    .controls button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: rgba(255,255,255,0.15);
+      color: white;
+    }
+    .controls button:hover { background: rgba(255,255,255,0.25); }
+    .controls button.primary { background: #0d9488; color: white; }
+    .controls button.primary:hover { background: #0f766e; }
+    .demo-container.record-mode .controls,
+    .demo-container.record-mode .scene-indicator { display: none; }
+    .demo-container.record-mode .message-overlay { padding-bottom: 64px; }
+    .message-overlay h2 { font-size: clamp(1.2rem, 3vw, 1.75rem); }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <span class="scene-indicator" id="scene-indicator">Scene 1 of 9</span>
+    <div class="zoom-wrapper" id="zoom-wrapper">
+      <iframe class="app-frame" id="app-frame" src="/" title="RegTranslate"></iframe>
+    </div>
+    <div class="message-overlay" id="message-overlay">
+      <h2 id="msg-title">RegTranslate</h2>
+      <p id="msg-body">Convert regulatory PDFs into developer tasks. Export to Jira & GitHub.</p>
+    </div>
+    <div class="controls">
+      <button type="button" onclick="toggleRecordMode()" id="record-btn">Record mode (hide controls)</button>
+      <button type="button" onclick="prevScene()">← Previous</button>
+      <button type="button" class="primary" onclick="nextScene()">Next →</button>
+    </div>
+  </div>
+  <script>
+    const DEMO_URL = '/dashboard?demo=1';
+    const scenes = [
+      { title: 'RegTranslate', body: 'Convert regulatory PDFs into developer tasks. Export to Jira & GitHub.', zoom: 'normal', url: '/' },
+      { title: 'Get started', body: 'Click to open the dashboard and start processing documents.', zoom: 'zoom-in', url: DEMO_URL },
+      { title: '1. Select Regulation & Upload', body: 'Choose framework (HIPAA, GDPR, etc.) and upload your compliance document.', zoom: 'zoom-in', url: DEMO_URL },
+      { title: '2. Process Document', body: 'Extract text, chunk, and embed. Chunks are stored for RAG retrieval.', zoom: 'zoom-in', url: DEMO_URL },
+      { title: '3. Extract Tasks', body: 'AI extracts actionable tasks with acceptance criteria and priorities.', zoom: 'zoom-focus', url: DEMO_URL },
+      { title: '4. Review & Edit', body: 'Select tasks, edit details, and prepare for export.', zoom: 'zoom-focus', url: DEMO_URL },
+      { title: '5. Export to Jira', body: 'One-click export with project, board, and sprint options.', zoom: 'zoom-in', url: DEMO_URL },
+      { title: '6. Export to GitHub', body: 'Create GitHub issues from selected tasks.', zoom: 'zoom-in', url: DEMO_URL },
+      { title: 'Settings', body: 'Configure API credentials. Clear data to start fresh.', zoom: 'normal', url: DEMO_URL },
+      { title: 'Compliance Q&A', body: 'Ask questions about the regulation. Conversation history preserved.', zoom: 'zoom-in', url: DEMO_URL },
+    ];
+    let currentScene = 0;
+    const DURATION_MS = 8000;
+
+    function goToScene(i) {
+      if (i < 0) i = 0;
+      if (i >= scenes.length) i = scenes.length - 1;
+      currentScene = i;
+      const s = scenes[i];
+      document.getElementById('msg-title').textContent = s.title;
+      document.getElementById('msg-body').textContent = s.body;
+      document.getElementById('scene-indicator').textContent = `Scene ${i + 1} of ${scenes.length}`;
+      const zw = document.getElementById('zoom-wrapper');
+      zw.classList.remove('zoom-in', 'zoom-focus');
+      if (s.zoom !== 'normal') zw.classList.add(s.zoom);
+      if (s.url) {
+        const frame = document.getElementById('app-frame');
+        const base = window.location.origin;
+        if (frame.src !== base + s.url) frame.src = s.url;
+      }
+    }
+
+    function nextScene() {
+      if (currentScene < scenes.length - 1) goToScene(currentScene + 1);
+    }
+
+    function prevScene() {
+      if (currentScene > 0) goToScene(currentScene - 1);
+    }
+
+    let autoAdvance = null;
+    function startAutoAdvance() {
+      if (autoAdvance) clearInterval(autoAdvance);
+      autoAdvance = setInterval(() => {
+        if (currentScene >= scenes.length - 1) clearInterval(autoAdvance);
+        else nextScene();
+      }, DURATION_MS);
+    }
+
+    function toggleRecordMode() {
+      document.querySelector('.demo-container').classList.toggle('record-mode');
+      const btn = document.getElementById('record-btn');
+      btn.textContent = document.querySelector('.demo-container').classList.contains('record-mode')
+        ? 'Show controls'
+        : 'Record mode (hide controls)';
+    }
+
+    goToScene(0);
+    startAutoAdvance();
+  </script>
+</body>
+</html>

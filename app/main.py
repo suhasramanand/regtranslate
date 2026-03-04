@@ -63,6 +63,65 @@ def health():
     return {"status": "ok"}
 
 
+FLOW_STAGES = [
+    {
+        "id": "upload",
+        "title": "Document Upload",
+        "desc": "PDF selected and sent to backend",
+        "duration_ms": 2000,
+        "details": ["Receive file from client", "Validate PDF format", "Assign doc_id"],
+    },
+    {
+        "id": "extract",
+        "title": "Text Extraction",
+        "desc": "PyPDF extracts and chunks text",
+        "duration_ms": 2500,
+        "details": ["Load PDF with PyPDF", "Extract raw text", "Split into chunks (overlap, size)", "Attach page/section metadata"],
+    },
+    {
+        "id": "embed",
+        "title": "Embeddings",
+        "desc": "sentence-transformers creates vectors",
+        "duration_ms": 3000,
+        "details": ["Load embedding model", "Encode each chunk to vector", "Normalize embeddings"],
+    },
+    {
+        "id": "store",
+        "title": "ChromaDB",
+        "desc": "Vectors stored for semantic search",
+        "duration_ms": 2000,
+        "details": ["Connect to ChromaDB collection", "Upsert vectors + metadata", "Index for similarity search"],
+    },
+    {
+        "id": "rag",
+        "title": "RAG Retrieval",
+        "desc": "Retrieve relevant chunks for extraction",
+        "duration_ms": 2500,
+        "details": ["Embed product context / query", "Query ChromaDB (top-k)", "Return chunks + scores"],
+    },
+    {
+        "id": "llm",
+        "title": "LLM Extraction",
+        "desc": "Groq/GenAI extracts structured tasks",
+        "duration_ms": 3500,
+        "details": ["Build prompt with chunks", "Call LLM (Groq Llama / Gemini)", "Parse JSON → tasks, acceptance criteria", "Deduplicate across regulations"],
+    },
+    {
+        "id": "results",
+        "title": "Results",
+        "desc": "Tasks ready for export",
+        "duration_ms": 3000,
+        "details": ["Return tasks to frontend", "Display with priority, source", "Export to Jira / GitHub"],
+    },
+]
+
+
+@api.get("/demo/flow-stages")
+def get_flow_stages():
+    """Return pipeline stages for the flow animation demo. Auto-plays through each stage."""
+    return {"stages": FLOW_STAGES}
+
+
 @api.get("/config/jira")
 def get_jira_config():
     """
@@ -433,13 +492,14 @@ async def regulation_check_content_change(
 class QARequest(BaseModel):
     doc_id: str
     question: str
+    screen_context: dict | None = None  # tasks, coverage, regulation_name, etc.
 
 
 @api.post("/qa")
 def qa_agent(req: QARequest):
-    """Answer compliance questions using RAG + LLM over the document."""
+    """Answer compliance questions using RAG + LLM. Also answers questions about the current screen state."""
     from app.services import qa_agent as qa_svc
-    result = qa_svc.answer_question(req.doc_id, req.question)
+    result = qa_svc.answer_question(req.doc_id, req.question, screen_context=req.screen_context)
     return result
 
 

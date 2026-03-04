@@ -2,6 +2,18 @@ import type { ExtractionTask, ExtractResponse, ProcessResponse } from './types'
 
 const API_BASE = '/api'
 
+export interface FlowStage {
+  id: string
+  title: string
+  desc: string
+  duration_ms: number
+  details?: string[]
+}
+
+export async function getFlowStages(): Promise<{ stages: FlowStage[] }> {
+  return fetchApi<{ stages: FlowStage[] }>('/demo/flow-stages')
+}
+
 export async function getJiraConfig(): Promise<{ url: string; email: string; api_token: string }> {
   return fetchApi<{ url: string; email: string; api_token: string }>('/config/jira')
 }
@@ -209,8 +221,29 @@ export async function checkRegulationContentChange(
 }
 
 // --- Compliance Q&A agent ---
-export async function qaAsk(docId: string, question: string): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
-  return fetchApi('/qa', { method: 'POST', body: JSON.stringify({ doc_id: docId, question }) })
+export interface QAScreenContext {
+  regulation_name?: string
+  task_count?: number
+  tasks?: Array<{ title: string; priority?: string }>
+  coverage?: { chunk_count?: number; pages_summary?: string; sections?: string[] }
+  recent_exports?: Array<{
+    target: string
+    task_count: number
+    project_key?: string
+    keys?: string[]
+    timestamp?: string
+  }>
+}
+
+export async function qaAsk(
+  docId: string,
+  question: string,
+  screenContext?: QAScreenContext | null
+): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
+  return fetchApi('/qa', {
+    method: 'POST',
+    body: JSON.stringify({ doc_id: docId, question, screen_context: screenContext ?? undefined }),
+  })
 }
 
 // --- Cross-regulation gap analysis ---

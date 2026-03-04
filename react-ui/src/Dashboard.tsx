@@ -31,7 +31,7 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback, checkRegulationContentChange, appendAuditLog, resetAllData } from './api'
 import type { ExtractionTask } from './types'
@@ -56,6 +56,65 @@ const TASK_TEMPLATES = [
 ]
 
 const EXPORT_PRESETS_KEY = 'regtranslate-export-presets'
+
+const DEMO_MESSAGES = {
+  step1: { title: '1. Select Regulation & Upload', body: 'Choose framework (HIPAA, GDPR, etc.) and upload your compliance document.' },
+  step2Processing: { title: '2. Process Document', body: 'Extract text, chunk, and embed. Chunks are stored for RAG retrieval.' },
+  step2Done: { title: '2. Process Document ✓', body: 'Chunks stored. Ready for extraction.' },
+  step3Extracting: { title: '3. Extract Tasks', body: 'AI extracts actionable tasks with acceptance criteria and priorities.' },
+  step3Done: { title: '3. Extract Tasks ✓', body: 'Tasks extracted. Review and edit as needed.' },
+  step4: { title: '4. Review & Edit', body: 'Select tasks, edit details, and prepare for export.' },
+  step5: { title: '5. Export to Jira ✓', body: 'One-click export with project, board, and sprint options.' },
+  step6: { title: '6. Export to GitHub ✓', body: 'Create GitHub issues from selected tasks.' },
+  qa: { title: 'Compliance Q&A ✓', body: 'Ask questions about the regulation. Conversation history preserved.' },
+  settings: { title: 'Settings', body: 'Configure API credentials. Clear data to start fresh.' },
+} as const
+
+const DEMO_TASKS: ExtractionTask[] = [
+  {
+    task_id: 'demo-1',
+    title: 'Implement Access Control',
+    description: 'Implement technical policies and procedures for electronic information systems that maintain ePHI to allow access only to those persons or software programs that have been granted access rights.',
+    priority: 'High',
+    penalty_risk: '',
+    source_citation: 'HIPAA § 164.312(a)',
+    source_text: 'Access control',
+    responsible_role: 'Security Engineer',
+    acceptance_criteria: ['Define access control policies', 'Implement RBAC', 'Enforce least privilege'],
+    also_satisfies: [],
+    confidence: 92,
+    subtasks: [],
+  },
+  {
+    task_id: 'demo-2',
+    title: 'Implement Audit Controls',
+    description: 'Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain ePHI.',
+    priority: 'High',
+    penalty_risk: '',
+    source_citation: 'HIPAA § 164.312(b)',
+    source_text: 'Audit controls',
+    responsible_role: 'DevOps',
+    acceptance_criteria: ['Log all ePHI access events', 'Immutable audit trail', '90-day retention minimum'],
+    also_satisfies: [],
+    confidence: 88,
+    subtasks: [],
+  },
+  {
+    task_id: 'demo-3',
+    title: 'Implement Integrity Controls',
+    description: 'Implement policies and procedures to protect ePHI from improper alteration or destruction.',
+    priority: 'Medium',
+    penalty_risk: '',
+    source_citation: 'HIPAA § 164.312(c)',
+    source_text: 'Integrity',
+    responsible_role: 'Engineer',
+    acceptance_criteria: ['Data validation', 'Checksums for stored ePHI', 'Change detection'],
+    also_satisfies: [],
+    confidence: 85,
+    subtasks: [],
+  },
+]
+
 
 interface ExportPreset {
   name: string
@@ -120,7 +179,104 @@ export function Dashboard() {
   const [regulationVersions, setRegulationVersions] = useState<Array<{ doc_id: string; regulation_name: string; source_filename: string; processed_at: string; version_label: string }>>([])
   const [versionChangeNotice, setVersionChangeNotice] = useState<{ filename: string; previousAt: string } | null>(null)
 
+  const [searchParams] = useSearchParams()
+  const isDemoMode = searchParams.get('demo') === '1'
+  const [demoMessage, setDemoMessage] = useState<{ title: string; body: string } | null>(null)
+  const [demoZoom, setDemoZoom] = useState<'normal' | 'zoom-in' | 'zoom-focus'>('zoom-in')
+  const demoAutoPlayRef = useRef<boolean>(false)
+
   useEffect(() => {
+    if (isDemoMode) {
+      const demoFile = new File([], 'sample-hipaa.pdf', { type: 'application/pdf' })
+      setRegulationName('HIPAA')
+      setSelectedFiles([demoFile])
+      setSelectedFile(demoFile)
+      setToolsExpanded(true)
+      setDemoMessage(DEMO_MESSAGES.step1)
+      setDemoZoom('zoom-in')
+    }
+  }, [isDemoMode])
+
+  useEffect(() => {
+    if (!isDemoMode || demoAutoPlayRef.current || page !== 'main') return
+    demoAutoPlayRef.current = true
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+    const run = async () => {
+      while (demoAutoPlayRef.current) {
+        setDemoMessage(DEMO_MESSAGES.step1)
+        setDemoZoom('zoom-in')
+        await sleep(5500)
+
+        setLoading('process')
+        setDemoMessage(DEMO_MESSAGES.step2Processing)
+        await sleep(3800)
+        setDocIds(['demo-doc'])
+        setTasks([])
+        setLoading(null)
+        setDemoMessage(DEMO_MESSAGES.step2Done)
+        await sleep(4000)
+
+        setLoading('extract')
+        setDemoMessage(DEMO_MESSAGES.step3Extracting)
+        setDemoZoom('zoom-focus')
+        await sleep(3400)
+        setCoverage({ chunk_count: 1, pages_summary: '1 page', sections: ['164.312'], section_4_in_chunks: false })
+        for (let i = 0; i < DEMO_TASKS.length; i++) {
+          setTasks((prev) => [...prev, DEMO_TASKS[i]])
+          await sleep(500)
+        }
+        setSelectedTasks(new Set(DEMO_TASKS.map((t) => t.task_id)))
+        setLoading(null)
+        setDemoMessage(DEMO_MESSAGES.step4)
+        setQaPanelOpen(true)
+        await sleep(6500)
+
+        setLoading('jira')
+        setDemoZoom('zoom-in')
+        await sleep(2800)
+        const fakeKeys = DEMO_TASKS.map((_, i) => `REG-${i + 1}`)
+        setDemoMessage({ title: '5. Export to Jira ✓', body: `Created: ${fakeKeys.join(', ')}` })
+        setSuccess(`Created: ${fakeKeys.join(', ')}`)
+        setLoading(null)
+        await sleep(4500)
+
+        setLoading('github')
+        await sleep(2600)
+        setDemoMessage({ title: '6. Export to GitHub ✓', body: `Created ${DEMO_TASKS.length} issue(s).` })
+        setSuccess(`Created ${DEMO_TASKS.length} issue(s).`)
+        setLoading(null)
+        await sleep(4500)
+
+        setDemoMessage(DEMO_MESSAGES.qa)
+        setQaMessages([
+          { role: 'user', content: 'What does HIPAA say about access control?' },
+          {
+            role: 'assistant',
+            content:
+              '## § 164.312 - Technical Safeguards\n\nAccording to HIPAA Section 164.312, **access control** requires implementing technical policies and procedures for electronic information systems that maintain ePHI to allow access only to those persons or software programs that have been granted access rights.',
+          },
+        ])
+        await sleep(7000)
+
+        setDocIds([])
+        setTasks([])
+        setSelectedTasks(new Set())
+        setCoverage(null)
+        setQaMessages([])
+        setQaPanelOpen(false)
+        setSuccess(null)
+        setError(null)
+        await sleep(3500)
+      }
+    }
+    run()
+    return () => { demoAutoPlayRef.current = false }
+  }, [isDemoMode, page])
+
+  useEffect(() => {
+    if (isDemoMode) return
     getExportConfig()
       .then(({ jira, github }) => {
         if (jira.url) setJiraUrl(jira.url)
@@ -130,7 +286,7 @@ export function Dashboard() {
         if (github.token) setGhToken(github.token)
       })
       .catch(() => {})
-  }, [])
+  }, [isDemoMode])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<Array<{ timestamp: string; target: string; project_key?: string; repo?: string; keys?: string[]; urls?: string[]; task_count: number; jira_url?: string }>>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -174,6 +330,10 @@ export function Dashboard() {
   }
 
   const loadHistory = () => {
+    if (isDemoMode) {
+      setHistoryEntries([])
+      return
+    }
     setHistoryLoading(true)
     getExportHistory(100)
       .then(({ entries }) => setHistoryEntries(entries))
@@ -182,6 +342,10 @@ export function Dashboard() {
   }
 
   const loadAudit = () => {
+    if (isDemoMode) {
+      setAuditEntries([])
+      return
+    }
     setAuditLoading(true)
     getAuditLogs(100)
       .then(({ entries }) => setAuditEntries(entries))
@@ -190,6 +354,10 @@ export function Dashboard() {
   }
 
   const loadRegulationVersions = () => {
+    if (isDemoMode) {
+      setRegulationVersions([])
+      return
+    }
     getRegulationVersions(undefined, 20)
       .then(({ versions }) => setRegulationVersions(versions))
       .catch(() => setRegulationVersions([]))
@@ -198,11 +366,41 @@ export function Dashboard() {
   const handleQaAsk = async () => {
     if (!docId || !qaQuestion.trim()) return
     const question = qaQuestion.trim()
+    if (isDemoMode) {
+      setQaMessages((prev) => [...prev, { role: 'user', content: question }])
+      setQaQuestion('')
+      setQaLoading(true)
+      await new Promise((r) => setTimeout(r, 1200))
+      setQaMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content:
+            '## § 164.312 - Technical Safeguards\n\nAccording to HIPAA Section 164.312, **access control** requires implementing technical policies and procedures for electronic information systems that maintain ePHI to allow access only to those persons or software programs that have been granted access rights.',
+        },
+      ])
+      setDemoMessage(DEMO_MESSAGES.qa)
+      setQaLoading(false)
+      return
+    }
     setQaLoading(true)
     setQaMessages((prev) => [...prev, { role: 'user', content: question }])
     setQaQuestion('')
+    const screenContext = {
+      regulation_name: regulationName,
+      task_count: tasks.length,
+      tasks: tasks.map((t) => ({ title: t.title, priority: t.priority })),
+      coverage: coverage ? { chunk_count: coverage.chunk_count, pages_summary: coverage.pages_summary, sections: coverage.sections } : undefined,
+      recent_exports: historyEntries.slice(0, 5).map((e) => ({
+        target: e.target,
+        task_count: e.task_count,
+        project_key: e.project_key,
+        keys: e.keys,
+        timestamp: e.timestamp,
+      })),
+    }
     try {
-      const res = await qaAsk(docId, question)
+      const res = await qaAsk(docId, question, screenContext)
       setQaMessages((prev) => [...prev, { role: 'assistant', content: res.answer, sources: res.sources }])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Q&A failed')
@@ -212,6 +410,7 @@ export function Dashboard() {
   }
 
   const handleGapAnalysis = async () => {
+    if (isDemoMode) return
     if (tasks.length < 2) {
       setError('Need at least 2 tasks. Split: first half vs second half.')
       return
@@ -235,6 +434,7 @@ export function Dashboard() {
   }
 
   const handleCalibrationFeedback = (taskId: string, title: string, correct: boolean) => {
+    if (isDemoMode) return
     submitCalibrationFeedback(taskId, title, correct)
       .then(() => setSuccess('Feedback recorded'))
       .catch((e) => setError(e instanceof Error ? e.message : 'Feedback failed'))
@@ -390,6 +590,16 @@ export function Dashboard() {
     clearMessages()
     setVersionChangeNotice(null)
     setLoading('process')
+    if (isDemoMode) {
+      setDemoMessage(DEMO_MESSAGES.step2Processing)
+      await new Promise((r) => setTimeout(r, 2200))
+      setDocIds(['demo-doc'])
+      setTasks([])
+      setDemoMessage(DEMO_MESSAGES.step2Done)
+      setSuccess('Processed 1 file(s). Ready for extraction.')
+      setLoading(null)
+      return
+    }
     try {
       const firstFile = files[0]
       try {
@@ -428,6 +638,20 @@ export function Dashboard() {
     if (!docIds.length) return
     clearMessages()
     setLoading('extract')
+    if (isDemoMode) {
+      setDemoMessage(DEMO_MESSAGES.step3Extracting)
+      await new Promise((r) => setTimeout(r, 1800))
+      setCoverage({ chunk_count: 1, pages_summary: '1 page', sections: ['164.312'], section_4_in_chunks: false })
+      for (let i = 0; i < DEMO_TASKS.length; i++) {
+        setTasks((prev) => [...prev, DEMO_TASKS[i]])
+        await new Promise((r) => setTimeout(r, 280))
+      }
+      setSelectedTasks(new Set(DEMO_TASKS.map((t) => t.task_id)))
+      setLoading(null)
+      setDemoMessage(DEMO_MESSAGES.step4)
+      setQaPanelOpen(true)
+      return
+    }
     try {
       const res = await extractTasks({
         doc_ids: docIds,
@@ -478,6 +702,16 @@ export function Dashboard() {
   }
 
   const handleExportJira = async () => {
+    if (isDemoMode) {
+      const toExport = tasks.filter((t) => selectedTasks.has(t.task_id))
+      setLoading('jira')
+      await new Promise((r) => setTimeout(r, 1500))
+      const fakeKeys = toExport.map((_, i) => `REG-${i + 1}`)
+      setDemoMessage({ title: DEMO_MESSAGES.step5.title.replace(' ✓', ''), body: `Created: ${fakeKeys.join(', ')}` })
+      setSuccess(`Created: ${fakeKeys.join(', ')}`)
+      setLoading(null)
+      return
+    }
     const toExport = tasks.filter((t) => selectedTasks.has(t.task_id))
     if (!toExport.length || !jiraProject) {
       setError('Select at least one task and provide project key.')
@@ -507,6 +741,15 @@ export function Dashboard() {
   }
 
   const handleExportGitHub = async () => {
+    if (isDemoMode) {
+      const toExport = tasks.filter((t) => selectedTasks.has(t.task_id))
+      setLoading('github')
+      await new Promise((r) => setTimeout(r, 1200))
+      setDemoMessage({ title: DEMO_MESSAGES.step6.title.replace(' ✓', ''), body: `Created ${toExport.length} issue(s).` })
+      setSuccess(`Created ${toExport.length} issue(s).`)
+      setLoading(null)
+      return
+    }
     const toExport = tasks.filter((t) => selectedTasks.has(t.task_id))
     if (!toExport.length || !ghRepo || !ghToken) {
       setError('Select at least one task and provide repo + token.')
@@ -652,7 +895,7 @@ export function Dashboard() {
             <a
               href="#"
               className={page === 'settings' ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('settings'); setSidebarOpen(false); }}
+              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('settings'); setSidebarOpen(false); if (isDemoMode) setDemoMessage(DEMO_MESSAGES.settings); }}
             >
               <Settings size={20} />
             </a>
@@ -729,7 +972,8 @@ export function Dashboard() {
         )}
       </div>
 
-      <main className="main">
+      <main className={`main ${isDemoMode ? 'demo-main' : ''}`}>
+        <div className={`demo-zoom-wrapper ${isDemoMode ? `demo-zoom-${demoZoom}` : ''}`}>
         <div className="main-inner">
           {page === 'audit' ? (
             <AuditPage entries={auditEntries} loading={auditLoading} onRefresh={loadAudit} />
@@ -756,6 +1000,12 @@ export function Dashboard() {
             />
           ) : (
           <>
+          {isDemoMode && demoMessage && page === 'main' && (
+            <div key={demoMessage.title} className="demo-message-overlay">
+              <h2 className="demo-message-title">{demoMessage.title}</h2>
+              <p className="demo-message-body">{demoMessage.body}</p>
+            </div>
+          )}
           <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
             <div>
               <h1>RegTranslate</h1>
@@ -953,8 +1203,58 @@ export function Dashboard() {
                         {gapLoading ? <Loader2 size={14} className="spinner" /> : 'Compare first half vs second half'}
                       </button>
                       {gapResult && (
-                        <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-3)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)' }}>
-                          <p>Overlap: {gapResult.overlap.length} · Unique to {gapResult.label_a}: {gapResult.unique_to_a.length} · Unique to {gapResult.label_b}: {gapResult.unique_to_b.length}</p>
+                        <div className="gap-analysis-result">
+                          <div className="gap-analysis-venn">
+                            <div className="gap-venn-left">
+                              <span className="gap-venn-count">{gapResult.unique_to_a.length}</span>
+                              <span className="gap-venn-label">Only {gapResult.label_a}</span>
+                            </div>
+                            <div className="gap-venn-center">
+                              <span className="gap-venn-count">{gapResult.overlap.length}</span>
+                              <span className="gap-venn-label">Overlap</span>
+                            </div>
+                            <div className="gap-venn-right">
+                              <span className="gap-venn-count">{gapResult.unique_to_b.length}</span>
+                              <span className="gap-venn-label">Only {gapResult.label_b}</span>
+                            </div>
+                          </div>
+                          <details className="gap-analysis-details">
+                            <summary>View tasks</summary>
+                            <div className="gap-analysis-tasks">
+                              {gapResult.unique_to_a.length > 0 && (
+                                <div className="gap-task-group">
+                                  <h5>Only in {gapResult.label_a}</h5>
+                                  <ul>
+                                    {gapResult.unique_to_a.map((t, i) => (
+                                      <li key={i}>{t.title}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {gapResult.overlap.length > 0 && (
+                                <div className="gap-task-group gap-overlap">
+                                  <h5>Overlapping pairs</h5>
+                                  <ul>
+                                    {gapResult.overlap.map((o, i) => (
+                                      <li key={i}>
+                                        <strong>{o.task_a.title}</strong> ↔ {o.task_b.title}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {gapResult.unique_to_b.length > 0 && (
+                                <div className="gap-task-group">
+                                  <h5>Only in {gapResult.label_b}</h5>
+                                  <ul>
+                                    {gapResult.unique_to_b.map((t, i) => (
+                                      <li key={i}>{t.title}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </details>
                         </div>
                       )}
                     </div>
@@ -1059,7 +1359,7 @@ export function Dashboard() {
             </div>
             <p className="step-desc">Select tasks to export. Edit before exporting if needed. Ctrl+Shift+E: Extract · Ctrl+Shift+S: Export Jira</p>
             <div className="task-list">
-              {filteredTasks.map((task) => (
+              {filteredTasks.map((task, idx) => (
                 <TaskCard
                   key={task.task_id}
                   task={task}
@@ -1069,6 +1369,7 @@ export function Dashboard() {
                   onDelete={() => deleteTask(task.task_id)}
                   onCopyMarkdown={() => copyTaskAsMarkdown(task)}
                   onCalibrationFeedback={handleCalibrationFeedback}
+                  expandIn={isDemoMode && idx === 0 ? 900 : undefined}
                 />
               ))}
             </div>
@@ -1164,6 +1465,7 @@ export function Dashboard() {
           </>
           )}
         </div>
+        </div>
       </main>
 
       {docId && (
@@ -1189,7 +1491,7 @@ export function Dashboard() {
               </Tooltip>
             </div>
             <div className="qa-panel-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>Ask questions about the regulation.</p>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>Ask about the regulation or the current workspace (tasks, coverage, exports).</p>
               <div className="qa-chat-messages">
                 {qaMessages.map((msg, i) => (
                   <div key={i} className={`qa-chat-bubble qa-chat-bubble-${msg.role}`}>
@@ -1217,7 +1519,7 @@ export function Dashboard() {
               <div className="input-group" style={{ marginTop: 'var(--space-3)' }}>
                 <input
                   type="text"
-                  placeholder="e.g. What does the regulation say about encryption?"
+                  placeholder="e.g. What does HIPAA say about encryption? How many tasks did we extract?"
                   value={qaQuestion}
                   onChange={(e) => setQaQuestion(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleQaAsk()}
@@ -1491,6 +1793,7 @@ function TaskCard({
   onDelete,
   onCopyMarkdown,
   onCalibrationFeedback,
+  expandIn,
 }: {
   task: ExtractionTask
   selected: boolean
@@ -1499,10 +1802,18 @@ function TaskCard({
   onDelete?: () => void
   onCopyMarkdown?: () => void
   onCalibrationFeedback?: (taskId: string, title: string, correct: boolean) => void
+  expandIn?: number
 }) {
   const ac = task.acceptance_criteria ?? []
   const subs = task.subtasks ?? []
   const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    if (expandIn != null && expandIn > 0) {
+      const t = setTimeout(() => setExpanded(true), expandIn)
+      return () => clearTimeout(t)
+    }
+  }, [expandIn])
   const [editing, setEditing] = useState(false)
   const evidenceLinks = task.evidence_links ?? []
   const [editForm, setEditForm] = useState({
