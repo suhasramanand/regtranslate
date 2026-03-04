@@ -49,6 +49,25 @@ export async function getAuditLogs(limit?: number, since?: string): Promise<{ en
   return fetchApi<{ entries: AuditLogEntry[] }>(`/audit/logs${q}`)
 }
 
+export async function appendAuditLog(params: {
+  user_id: string
+  action: string
+  resource_accessed: string
+  source_ip?: string
+  details?: string
+}): Promise<{ ok: boolean; entry_hash: string }> {
+  return fetchApi<{ ok: boolean; entry_hash: string }>('/audit/log', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: params.user_id,
+      action: params.action,
+      resource_accessed: params.resource_accessed,
+      source_ip: params.source_ip ?? '',
+      details: params.details ?? '',
+    }),
+  })
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
@@ -84,17 +103,20 @@ export async function processDocument(
 }
 
 export async function extractTasks(params: {
-  doc_id: string
+  doc_id?: string
+  doc_ids?: string[]
   regulation_name: string
   dedupe?: boolean
   return_coverage?: boolean
   product_context?: string | null
   rag_query?: string | null
 }): Promise<ExtractResponse> {
+  const ids = params.doc_ids ?? (params.doc_id ? [params.doc_id] : [])
   return fetchApi<ExtractResponse>('/extract', {
     method: 'POST',
     body: JSON.stringify({
-      doc_id: params.doc_id,
+      doc_id: ids[0] ?? '',
+      doc_ids: ids.length > 0 ? ids : undefined,
       regulation_name: params.regulation_name,
       dedupe: params.dedupe ?? true,
       return_coverage: params.return_coverage ?? true,
@@ -169,6 +191,23 @@ export async function checkRegulationUpdate(docId: string, file: File): Promise<
   return res.json()
 }
 
+export async function checkRegulationContentChange(
+  file: File,
+  regulationName: string,
+): Promise<{ content_changed: boolean; previous_processed_at: string | null }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(
+    `${API_BASE}/regulation/check-content-change?regulation_name=${encodeURIComponent(regulationName)}`,
+    { method: 'POST', body: formData },
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? res.statusText)
+  }
+  return res.json()
+}
+
 // --- Compliance Q&A agent ---
 export async function qaAsk(docId: string, question: string): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
   return fetchApi('/qa', { method: 'POST', body: JSON.stringify({ doc_id: docId, question }) })
@@ -200,4 +239,10 @@ export async function submitCalibrationFeedback(taskId: string, title: string, c
 
 export async function getCalibrationStats(): Promise<{ total_feedback_entries: number; tasks_with_feedback: number; average_accuracy: number }> {
   return fetchApi('/calibration/stats')
+}
+
+export async function resetAllData(): Promise<{ ok: boolean; cleared: string[] }> {
+  return fetchApi<{ ok: boolean; cleared: string[] }>('/settings/reset-all', {
+    method: 'POST',
+  })
 }

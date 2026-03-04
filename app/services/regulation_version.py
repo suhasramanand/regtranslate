@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -122,3 +123,45 @@ def check_update_needed(doc_id: str, new_content: bytes) -> dict:
         "current_hash": rec.content_hash,
         "new_hash": new_hash,
     }
+
+
+def _base_filename(name: str) -> str:
+    """Strip version suffixes (-v2, _v2, .v2, etc.) for comparison."""
+    p = Path(name)
+    stem = p.stem
+    stem = re.sub(r"[-_]v\d+$", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\.v\d+$", "", stem, flags=re.IGNORECASE)
+    return f"{stem}{p.suffix}"
+
+
+def check_content_changed(
+    regulation_name: str,
+    source_filename: str,
+    content: bytes,
+) -> dict:
+    """
+    Check if this file's content differs from the last processed version
+    with the same regulation. Matches by exact filename first, then by base
+    name (e.g. sample-v2.pdf matches sample.pdf).
+    Returns {content_changed: bool, previous_processed_at: str | None}.
+    """
+    entries = _load()
+    new_hash = _content_hash(content)
+    new_base = _base_filename(source_filename)
+    for e in entries:
+        if e.get("regulation_name") != regulation_name:
+            continue
+        prev_name = e.get("source_filename", "")
+        if prev_name == source_filename:
+            prev_hash = e.get("content_hash", "")
+            return {
+                "content_changed": prev_hash != new_hash,
+                "previous_processed_at": e.get("processed_at"),
+            }
+        if _base_filename(prev_name) == new_base:
+            prev_hash = e.get("content_hash", "")
+            return {
+                "content_changed": prev_hash != new_hash,
+                "previous_processed_at": e.get("processed_at"),
+            }
+    return {"content_changed": False, "previous_processed_at": None}

@@ -91,3 +91,25 @@ def test_check_update_missing_doc_id():
         files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
     )
     assert r.status_code == 400  # doc_id required
+
+
+def test_check_content_change_missing_regulation():
+    pdf_content = b"%PDF-1.4 minimal"
+    r = client.post(
+        "/regulation/check-content-change",
+        files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert r.status_code == 400  # regulation_name required
+
+
+def test_check_content_change_success():
+    pdf_content = b"%PDF-1.4 minimal"
+    r = client.post(
+        "/regulation/check-content-change",
+        params={"regulation_name": "HIPAA"},
+        files={"file": ("hipaa.pdf", io.BytesIO(pdf_content), "application/pdf")},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert "content_changed" in data
+    assert "previous_processed_at" in data

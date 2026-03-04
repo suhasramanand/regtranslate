@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  AlertTriangle,
   FileCode,
   Github,
   Menu,
@@ -27,10 +28,12 @@ import {
   ShieldCheck,
   MessageCircle,
   PanelRightClose,
+  Settings,
+  Trash2,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback } from './api'
+import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback, checkRegulationContentChange, appendAuditLog, resetAllData } from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
@@ -61,7 +64,8 @@ interface ExportPreset {
 }
 
 export function Dashboard() {
-  const [docId, setDocId] = useState<string | null>(null)
+  const [docIds, setDocIds] = useState<string[]>([])
+  const docId = docIds[0] ?? null
   const [regulationName, setRegulationName] = useState('Custom')
   const [tasks, setTasks] = useState<ExtractionTask[]>([])
   type LoadingState = 'process' | 'extract' | 'jira' | 'github' | null
@@ -93,13 +97,13 @@ export function Dashboard() {
   const [taskFilterPriority, setTaskFilterPriority] = useState<string>('')
   const [taskFilterConfidence, setTaskFilterConfidence] = useState<string>('')
   const { theme, toggleTheme } = useTheme()
-  const [page, setPage] = useState<'main' | 'history' | 'audit'>('main')
+  const [page, setPage] = useState<'main' | 'history' | 'audit' | 'settings'>('main')
   const [auditEntries, setAuditEntries] = useState<Array<{ timestamp: string; user_id: string; action: string; resource_accessed: string; source_ip: string; details: string }>>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [coverage, setCoverage] = useState<{ chunk_count: number; pages_summary: string; sections: string[]; section_4_in_chunks: boolean } | null>(null)
   const [qaQuestion, setQaQuestion] = useState('')
-  const [qaAnswer, setQaAnswer] = useState<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> } | null>(null)
+  const [qaMessages, setQaMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; sources?: Array<{ text: string; page: string | number; section: string }> }>>([])
   const [qaLoading, setQaLoading] = useState(false)
   const [toolsExpanded, setToolsExpanded] = useState(false)
   const [qaPanelOpen, setQaPanelOpen] = useState(false)
@@ -109,8 +113,12 @@ export function Dashboard() {
   useEffect(() => {
     if (docId) setToolsExpanded(true)
   }, [docId])
+  useEffect(() => {
+    setQaMessages([])
+  }, [docId])
   const [gapLoading, setGapLoading] = useState(false)
   const [regulationVersions, setRegulationVersions] = useState<Array<{ doc_id: string; regulation_name: string; source_filename: string; processed_at: string; version_label: string }>>([])
+  const [versionChangeNotice, setVersionChangeNotice] = useState<{ filename: string; previousAt: string } | null>(null)
 
   useEffect(() => {
     getExportConfig()
@@ -126,6 +134,44 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<Array<{ timestamp: string; target: string; project_key?: string; repo?: string; keys?: string[]; urls?: string[]; task_count: number; jira_url?: string }>>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [settingsResetLoading, setSettingsResetLoading] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
+
+  useEffect(() => {
+    if (!showClearConfirm) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowClearConfirm(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showClearConfirm])
+
+  const handleResetAll = async () => {
+    setShowClearConfirm(false)
+    setSettingsResetLoading(true)
+    clearMessages()
+    try {
+      await resetAllData()
+      setDocIds([])
+      setTasks([])
+      setSelectedTasks(new Set())
+      setCoverage(null)
+      setVersionChangeNotice(null)
+      setGapResult(null)
+      setQaMessages([])
+      setSelectedFiles([])
+      setSelectedFile(null)
+      loadHistory()
+      loadAudit()
+      setSuccess('All data cleared. Start fresh by uploading a document.')
+      setRegulationVersions([])
+      setPage('main')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to clear data')
+    } finally {
+      setSettingsResetLoading(false)
+    }
+  }
 
   const loadHistory = () => {
     setHistoryLoading(true)
@@ -151,11 +197,13 @@ export function Dashboard() {
 
   const handleQaAsk = async () => {
     if (!docId || !qaQuestion.trim()) return
+    const question = qaQuestion.trim()
     setQaLoading(true)
-    setQaAnswer(null)
+    setQaMessages((prev) => [...prev, { role: 'user', content: question }])
+    setQaQuestion('')
     try {
-      const res = await qaAsk(docId, qaQuestion.trim())
-      setQaAnswer(res)
+      const res = await qaAsk(docId, question)
+      setQaMessages((prev) => [...prev, { role: 'assistant', content: res.answer, sources: res.sources }])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Q&A failed')
     } finally {
@@ -330,25 +378,44 @@ export function Dashboard() {
     setSuccess(null)
   }
 
+  const logAudit = useCallback((action: string, resource: string, details: string) => {
+    appendAuditLog({ user_id: 'web-ui', action, resource_accessed: resource, details }).catch(() => {})
+  }, [])
+
   const effectiveRegulation = regulationName === 'Custom' && customRegulation.trim() ? customRegulation.trim() : regulationName
 
   const handleUpload = async () => {
     const files = selectedFiles.length ? selectedFiles : (selectedFile ? [selectedFile] : [])
     if (!files.length) return
     clearMessages()
+    setVersionChangeNotice(null)
     setLoading('process')
     try {
+      const firstFile = files[0]
+      try {
+        const check = await checkRegulationContentChange(firstFile, effectiveRegulation)
+        if (check.content_changed && check.previous_processed_at) {
+          const prevDate = new Date(check.previous_processed_at).toLocaleDateString(undefined, { dateStyle: 'medium' })
+          setVersionChangeNotice({ filename: firstFile.name, previousAt: prevDate })
+        }
+      } catch {
+        // Version check failed (e.g. 404 if endpoint missing) — proceed with upload
+      }
+      const collectedIds: string[] = []
       let lastRes: { doc_id: string; chunk_count: number; regulation_name: string }
       for (let i = 0; i < files.length; i++) {
         const res = await processDocument(files[i], effectiveRegulation)
         lastRes = res
+        collectedIds.push(res.doc_id)
         if (i < files.length - 1) setSuccess(`Processed ${res.chunk_count} chunks from ${files[i].name}. Next...`)
       }
       if (lastRes!) {
-        setDocId(lastRes.doc_id)
+        setDocIds(collectedIds)
         setRegulationName(lastRes.regulation_name)
         setTasks([])
         setSuccess(`Processed ${files.length} file(s). Ready for extraction.`)
+        logAudit('document_process', `doc/${lastRes.doc_id}`, `reg=${lastRes.regulation_name} chunks=${lastRes.chunk_count}`)
+        loadRegulationVersions()
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Processing failed')
@@ -358,12 +425,12 @@ export function Dashboard() {
   }
 
   const handleExtract = async () => {
-    if (!docId) return
+    if (!docIds.length) return
     clearMessages()
     setLoading('extract')
     try {
       const res = await extractTasks({
-        doc_id: docId,
+        doc_ids: docIds,
         regulation_name: effectiveRegulation,
         dedupe,
         return_coverage: true,
@@ -378,6 +445,7 @@ export function Dashboard() {
       setTasks(normalized)
       setSelectedTasks(new Set(normalized.map((t) => t.task_id ?? '').filter(Boolean)))
       setCoverage(res.coverage ?? null)
+      logAudit('task_extract', `doc/${docIds.join(',')}`, `tasks=${normalized.length} reg=${effectiveRegulation}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Extraction failed')
     } finally {
@@ -398,6 +466,15 @@ export function Dashboard() {
     setTasks((prev) =>
       prev.map((t) => (t.task_id === taskId ? { ...t, ...updates } : t))
     )
+  }
+
+  const deleteTask = (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.task_id !== taskId))
+    setSelectedTasks((prev) => {
+      const next = new Set(prev)
+      next.delete(taskId)
+      return next
+    })
   }
 
   const handleExportJira = async () => {
@@ -421,6 +498,7 @@ export function Dashboard() {
       })
       setSuccess(`Created: ${res.keys.join(', ')}`)
       loadHistory()
+      logAudit('jira_export', `project/${jiraProject}`, `keys=${res.keys.join(', ')} count=${toExport.length}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Jira export failed')
     } finally {
@@ -444,6 +522,7 @@ export function Dashboard() {
       })
       setSuccess(`Created ${res.urls.length} issue(s).`)
       loadHistory()
+      logAudit('github_export', `repo/${ghRepo}`, `issues=${res.urls.length} count=${toExport.length}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'GitHub export failed')
     } finally {
@@ -453,6 +532,43 @@ export function Dashboard() {
 
   return (
     <div className="app">
+      {showClearConfirm && (
+        <div
+          className="confirm-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-clear-title"
+          onClick={() => !settingsResetLoading && setShowClearConfirm(false)}
+        >
+          <div className="confirm-modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 id="confirm-clear-title" className="confirm-modal-title">Clear all data?</h3>
+            <p className="confirm-modal-desc">
+              This removes documents, tasks, audit logs, export history, and version tracking. You can&apos;t undo this.
+            </p>
+            <div className="confirm-modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowClearConfirm(false)}
+                disabled={settingsResetLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ color: 'white', background: 'var(--error)', borderColor: 'var(--error)' }}
+                onClick={() => handleResetAll()}
+                disabled={settingsResetLoading}
+              >
+                {settingsResetLoading ? <Loader2 size={16} className="spinner" /> : <Trash2 size={16} />}
+                {settingsResetLoading ? 'Clearing…' : 'Clear all'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(loading === 'jira' || loading === 'github') && (
         <div className="loading-overlay" role="status" aria-live="polite">
           <div className="loading-overlay-content">
@@ -492,10 +608,9 @@ export function Dashboard() {
       />
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-brand" style={{ justifyContent: 'space-between' }}>
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div className="sidebar-brand">
+          <Link to="/" title="RegTranslate">
             <FileText size={24} strokeWidth={2} />
-            RegTranslate
           </Link>
           <button
             className="menu-toggle"
@@ -506,52 +621,113 @@ export function Dashboard() {
           </button>
         </div>
         <nav className="sidebar-nav">
-          <a
-            href="#"
-            className={page === 'main' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); setPage('main'); setSidebarOpen(false); }}
-          >
-            <FileCode size={16} />
-            PDF → Jira / GitHub
-          </a>
-          <a
-            href="#"
-            className={page === 'history' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); setPage('history'); loadHistory(); setSidebarOpen(false); }}
-          >
-            <History size={16} />
-            History
-          </a>
-          <a
-            href="#"
-            className={page === 'audit' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); setPage('audit'); loadAudit(); setSidebarOpen(false); }}
-          >
-            <ShieldCheck size={16} />
-            Audit trail
-          </a>
-          {docId && (
+          <Tooltip content="PDF → Jira / GitHub" side="right">
             <a
               href="#"
-              onClick={(e) => { e.preventDefault(); setPage('main'); setSidebarOpen(false); setQaPanelOpen(true); }}
-              style={{ color: 'var(--text-secondary)' }}
+              className={page === 'main' ? 'active' : ''}
+              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('main'); setSidebarOpen(false); }}
             >
-              <MessageCircle size={16} />
-              Q&A
+              <FileCode size={20} />
             </a>
-          )}
-          <Tooltip content={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
           </Tooltip>
+          <Tooltip content="History" side="right">
+            <a
+              href="#"
+              className={page === 'history' ? 'active' : ''}
+              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('history'); loadHistory(); setSidebarOpen(false); }}
+            >
+              <History size={20} />
+            </a>
+          </Tooltip>
+          <Tooltip content="Audit trail" side="right">
+            <a
+              href="#"
+              className={page === 'audit' ? 'active' : ''}
+              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('audit'); loadAudit(); setSidebarOpen(false); }}
+            >
+              <ShieldCheck size={20} />
+            </a>
+          </Tooltip>
+          <Tooltip content="Settings" side="right">
+            <a
+              href="#"
+              className={page === 'settings' ? 'active' : ''}
+              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('settings'); setSidebarOpen(false); }}
+            >
+              <Settings size={20} />
+            </a>
+          </Tooltip>
+          {docId && (
+            <Tooltip content="Q&A" side="right">
+              <a
+                href="#"
+                onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('main'); setSidebarOpen(false); setQaPanelOpen(true); }}
+              >
+                <MessageCircle size={20} />
+              </a>
+            </Tooltip>
+          )}
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </nav>
       </aside>
+
+      <div className="toast-stack" aria-live="polite">
+        {error && (
+          <div className="toast-popup toast-error" role="alert">
+            <XCircle size={20} />
+            <span>{error}</span>
+            <button type="button" className="toast-dismiss" onClick={() => setError(null)} aria-label="Dismiss">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {success && (
+          <div className="toast-popup toast-success" role="status">
+            <CheckCircle2 size={20} />
+            <span>{success}</span>
+            <button type="button" className="toast-dismiss" onClick={() => setSuccess(null)} aria-label="Dismiss">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {loading && loading !== 'jira' && loading !== 'github' && (
+          <div className="toast-popup toast-info" role="status">
+            <Loader2 size={20} className="spinner" />
+            <span>{loading === 'process' ? 'Processing PDF(s)…' : 'Extracting tasks…'}</span>
+          </div>
+        )}
+        {versionChangeNotice && (
+          <div className="toast-popup toast-warning" role="alert">
+            <AlertTriangle size={20} />
+            <div className="toast-popup-content">
+              <strong>Document content has changed</strong>
+              <span>{versionChangeNotice.filename} differs from the version last processed on {versionChangeNotice.previousAt}. A new version has been created.</span>
+            </div>
+            <button type="button" className="toast-dismiss" onClick={() => setVersionChangeNotice(null)} aria-label="Dismiss">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {page === 'audit' && auditLoading && auditEntries.length === 0 && (
+          <div className="toast-popup toast-info" role="status">
+            <Loader2 size={20} className="spinner" />
+            <span>Loading audit logs…</span>
+          </div>
+        )}
+        {page === 'history' && historyLoading && historyEntries.length === 0 && (
+          <div className="toast-popup toast-info" role="status">
+            <Loader2 size={20} className="spinner" />
+            <span>Loading history…</span>
+          </div>
+        )}
+      </div>
 
       <main className="main">
         <div className="main-inner">
@@ -562,6 +738,21 @@ export function Dashboard() {
               entries={historyEntries}
               loading={historyLoading}
               onRefresh={loadHistory}
+            />
+          ) : page === 'settings' ? (
+            <SettingsPage
+              onResetAll={() => setShowClearConfirm(true)}
+              loading={settingsResetLoading}
+              jiraUrl={jiraUrl}
+              setJiraUrl={setJiraUrl}
+              jiraEmail={jiraEmail}
+              setJiraEmail={setJiraEmail}
+              jiraToken={jiraToken}
+              setJiraToken={setJiraToken}
+              ghRepo={ghRepo}
+              setGhRepo={setGhRepo}
+              ghToken={ghToken}
+              setGhToken={setGhToken}
             />
           ) : (
           <>
@@ -585,27 +776,13 @@ export function Dashboard() {
             )}
           </header>
 
-          {error && (
-          <div className="alert alert-error" role="alert">
-            <XCircle size={18} />
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="alert alert-success" role="status">
-            <CheckCircle2 size={18} />
-            {success}
-          </div>
-        )}
-        {loading && loading !== 'jira' && loading !== 'github' && (
-          <div className="alert alert-info" role="status">
-            <Loader2 size={18} className="spinner" />
-            {loading === 'process' && 'Processing PDF…'}
-            {loading === 'extract' && 'Extracting tasks…'}
-          </div>
+          {!tasks.length && (
+          <p className="pipeline-hint">
+            Process a document, then run <strong>Extract tasks</strong>.
+          </p>
         )}
 
-          <div className="pipeline-row">
+        <div className="pipeline-row">
             <section className="step">
               <div className="step-header compact">
                 <span className="step-number">1</span>
@@ -659,6 +836,13 @@ export function Dashboard() {
                     {selectedFiles.length > 0 || selectedFile ? (
                       <>
                         <span>{selectedFiles.length > 1 ? `${selectedFiles.length} files` : (selectedFiles[0] || selectedFile)?.name}</span>
+                        {(selectedFiles.length > 0 ? selectedFiles : selectedFile ? [selectedFile] : []).length > 1 && (
+                          <ul className="upload-zone-filenames" aria-label="Selected files">
+                            {(selectedFiles.length > 0 ? selectedFiles : [selectedFile!]).map((f, i) => (
+                              <li key={i}>{f.name}</li>
+                            ))}
+                          </ul>
+                        )}
                         <span style={{ fontSize: 'var(--text-xs)' }}>Click to change</span>
                       </>
                     ) : (
@@ -692,10 +876,10 @@ export function Dashboard() {
                 <h2 className="step-title">Extract</h2>
               </div>
               <div className="card">
-                <Tooltip content="Merge duplicate tasks across regulations">
+                <Tooltip content="Merge duplicate tasks across documents and regulations">
                 <label className="checkbox-row">
                   <input type="checkbox" checked={dedupe} onChange={(e) => setDedupe(e.target.checked)} />
-                  Deduplicate across regulations
+                  Deduplicate across documents
                 </label>
                 </Tooltip>
                 <div className="input-group">
@@ -732,7 +916,7 @@ export function Dashboard() {
                   <button
                     className="btn btn-primary"
                     onClick={handleExtract}
-                    disabled={!docId || !!loading}
+                    disabled={!docIds.length || !!loading}
                     aria-busy={!!loading}
                   >
                     {loading === 'extract' ? <Loader2 size={16} className="spinner" /> : <Sparkles size={16} />}
@@ -744,14 +928,14 @@ export function Dashboard() {
             </section>
           </div>
 
-          {docId && (
-            <div className="alert alert-info" role="status">
-              <Info size={18} />
-              <span>
-                Document ID: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{docId}</code>
-                {' · '}Regulation: {regulationName}
-              </span>
-            </div>
+          {docIds.length > 0 && (
+            <Tooltip content={docIds.length === 1 ? `Document ID: ${docIds[0]}` : `${docIds.length} documents · IDs: ${docIds.join(', ')}`}>
+              <div className="doc-id-pill" role="status">
+                <Info size={18} />
+                <span className="doc-id-value"><code>{docIds.length === 1 ? docIds[0] : `${docIds.length} docs`}</code></span>
+                <span className="doc-id-reg">{regulationName}</span>
+              </div>
+            </Tooltip>
           )}
 
           {docId && (
@@ -792,16 +976,37 @@ export function Dashboard() {
           )}
 
           {coverage && tasks.length > 0 && (
-            <div className="compliance-checklist card">
-              <h3 className="compliance-checklist-title">Compliance coverage</h3>
-              <ul className="compliance-checklist-list">
-                <li><strong>Chunks:</strong> {coverage.chunk_count}</li>
-                <li><strong>Pages:</strong> {coverage.pages_summary}</li>
-                <li><strong>Section 4 in RAG:</strong> {coverage.section_4_in_chunks ? 'Yes' : 'No'}</li>
-                {coverage.sections.length > 0 && (
-                  <li><strong>Sections:</strong> {coverage.sections.slice(0, 10).join(', ')}{coverage.sections.length > 10 ? '…' : ''}</li>
-                )}
-              </ul>
+            <div className="compliance-coverage">
+              <h3 className="compliance-coverage-title">Coverage</h3>
+              <div className="compliance-coverage-stats">
+                <div className="coverage-stat">
+                  <span className="coverage-stat-value">{coverage.chunk_count}</span>
+                  <span className="coverage-stat-label">Chunks</span>
+                </div>
+                <div className="coverage-stat">
+                  <span className="coverage-stat-value">{coverage.pages_summary.replace('pages ', '')}</span>
+                  <span className="coverage-stat-label">Pages</span>
+                </div>
+                <div className={`coverage-stat ${coverage.section_4_in_chunks ? 'coverage-stat-ok' : ''}`}>
+                  <span className="coverage-stat-value">{coverage.section_4_in_chunks ? '✓' : '—'}</span>
+                  <span className="coverage-stat-label">§4 in RAG</span>
+                </div>
+              </div>
+              {coverage.sections.length > 0 && (
+                <div className="compliance-coverage-sections">
+                  <span className="coverage-sections-label">Sections in context</span>
+                  <div className="coverage-section-chips">
+                    {coverage.sections.slice(0, 12).map((s, i) => (
+                      <span key={i} className="coverage-section-chip" title={s}>
+                        {s.length > 40 ? s.slice(0, 37) + '…' : s}
+                      </span>
+                    ))}
+                    {coverage.sections.length > 12 && (
+                      <span className="coverage-section-chip coverage-section-more">+{coverage.sections.length - 12}</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -861,6 +1066,7 @@ export function Dashboard() {
                   selected={selectedTasks.has(task.task_id)}
                   onToggle={() => toggleTask(task.task_id)}
                   onUpdate={(updates) => updateTask(task.task_id, updates)}
+                  onDelete={() => deleteTask(task.task_id)}
                   onCopyMarkdown={() => copyTaskAsMarkdown(task)}
                   onCalibrationFeedback={handleCalibrationFeedback}
                 />
@@ -904,88 +1110,57 @@ export function Dashboard() {
                   <FileCode size={18} />
                   Jira
                 </div>
-                <div className="input-group">
-                  <Tooltip content="Your Atlassian Jira instance URL">
-                  <label htmlFor="jira-url">URL</label>
-                  </Tooltip>
-                  <input id="jira-url" type="text" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} placeholder="https://your-domain.atlassian.net" />
-                </div>
-                <div className="input-group">
-                  <Tooltip content="Email used for Jira API authentication">
-                  <label htmlFor="jira-email">Email</label>
-                  </Tooltip>
-                  <input id="jira-email" type="text" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} />
-                </div>
-                <div className="input-group">
-                  <Tooltip content="API token from Atlassian (leave blank to use server .env)">
-                  <label htmlFor="jira-token">API token</label>
-                  </Tooltip>
-                  <input id="jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} />
-                </div>
+                <p className="export-panel-hint">API URL and credentials are configured in Settings.</p>
                 <div className="input-group">
                   <Tooltip content="Jira project key (e.g. PROJ)">
-                  <label htmlFor="jira-project">Project key</label>
+                    <label htmlFor="jira-project">Project key</label>
                   </Tooltip>
                   <input id="jira-project" type="text" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} placeholder="PROJ" />
                 </div>
                 <div className="input-group">
                   <Tooltip content="Board ID from URL .../boards/42">
-                  <label htmlFor="jira-board">Board ID (optional)</label>
+                    <label htmlFor="jira-board">Board ID (optional)</label>
                   </Tooltip>
                   <input id="jira-board" type="text" value={jiraBoard} onChange={(e) => setJiraBoard(e.target.value)} placeholder="e.g. 42" />
                 </div>
                 <div className="input-group">
                   <Tooltip content="Sprint ID for backlog assignment">
-                  <label htmlFor="jira-sprint">Sprint ID (optional)</label>
+                    <label htmlFor="jira-sprint">Sprint ID (optional)</label>
                   </Tooltip>
                   <input id="jira-sprint" type="text" value={jiraSprint} onChange={(e) => setJiraSprint(e.target.value)} placeholder="e.g. 123" />
                 </div>
-                <Tooltip content="Create or use active sprint if none specified">
-                <label className="checkbox-row">
-                  <input type="checkbox" checked={jiraAutoSprint} onChange={(e) => setJiraAutoSprint(e.target.checked)} />
-                  Auto-create sprint if none exists
-                </label>
-                </Tooltip>
-                <Tooltip content="Create Jira issues for selected tasks">
-                <button className="btn btn-primary" onClick={handleExportJira} disabled={!!loading}>
-                  {loading === 'jira' ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
-                  Export to Jira
-                </button>
-                </Tooltip>
+                <div className="export-panel-actions">
+                  <Tooltip content="Create or use active sprint if none specified">
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={jiraAutoSprint} onChange={(e) => setJiraAutoSprint(e.target.checked)} />
+                      Auto-create sprint if none exists
+                    </label>
+                  </Tooltip>
+                  <Tooltip content="Create Jira issues for selected tasks">
+                    <button className="btn btn-primary" onClick={handleExportJira} disabled={!!loading}>
+                      {loading === 'jira' ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
+                      Export to Jira
+                    </button>
+                  </Tooltip>
+                </div>
               </div>
               <div className="export-panel">
                 <div className="export-panel-header">
                   <Github size={18} />
                   GitHub
                 </div>
-                <div className="input-group">
-                  <Tooltip content="Repository as owner/name (e.g. owner/repo)">
-                  <label htmlFor="gh-repo">Repo (owner/name)</label>
-                  </Tooltip>
-                  <input id="gh-repo" type="text" value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="owner/repo" />
-                </div>
-                <div className="input-group">
-                  <Tooltip content="Personal access token for GitHub API">
-                  <label htmlFor="gh-token">Token</label>
-                  </Tooltip>
-                  <input id="gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} />
-                </div>
+                <p className="export-panel-hint">Repo and token are configured in Settings.</p>
                 <Tooltip content="Create GitHub issues for selected tasks">
-                <button className="btn btn-primary" onClick={handleExportGitHub} disabled={!!loading}>
-                  {loading === 'github' ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
-                  Export to GitHub
-                </button>
+                  <button className="btn btn-primary" onClick={handleExportGitHub} disabled={!!loading}>
+                    {loading === 'github' ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
+                    Export to GitHub
+                  </button>
                 </Tooltip>
               </div>
               </div>
             </section>
           )}
 
-          {!tasks.length && docId && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-            Process a document, then run <strong>Extract tasks</strong>.
-          </p>
-          )}
           </>
           )}
         </div>
@@ -1015,7 +1190,31 @@ export function Dashboard() {
             </div>
             <div className="qa-panel-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>Ask questions about the regulation.</p>
-              <div className="input-group" style={{ marginBottom: 'var(--space-3)' }}>
+              <div className="qa-chat-messages">
+                {qaMessages.map((msg, i) => (
+                  <div key={i} className={`qa-chat-bubble qa-chat-bubble-${msg.role}`}>
+                    {msg.role === 'user' ? (
+                      <span className="qa-chat-user-text">{msg.content}</span>
+                    ) : (
+                      <>
+                        <div className="qa-answer-markdown">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
+                        {msg.sources && msg.sources.length > 0 && (
+                          <p className="qa-chat-sources">Sources: {msg.sources.length} chunk(s)</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+                {qaLoading && (
+                  <div className="qa-chat-bubble qa-chat-bubble-assistant">
+                    <Loader2 size={18} className="spinner" />
+                    <span>Thinking…</span>
+                  </div>
+                )}
+              </div>
+              <div className="input-group" style={{ marginTop: 'var(--space-3)' }}>
                 <input
                   type="text"
                   placeholder="e.g. What does the regulation say about encryption?"
@@ -1028,19 +1227,116 @@ export function Dashboard() {
                   Ask
                 </button>
               </div>
-              {qaAnswer && (
-                <div className="qa-answer qa-answer-markdown">
-                  <ReactMarkdown>{qaAnswer.answer}</ReactMarkdown>
-                  {qaAnswer.sources?.length > 0 && (
-                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-2)' }}>Sources: {qaAnswer.sources.length} chunk(s)</p>
-                  )}
-                </div>
-              )}
             </div>
           </aside>
         </>
       )}
     </div>
+  )
+}
+
+function SettingsPage({
+  onResetAll,
+  loading,
+  jiraUrl,
+  setJiraUrl,
+  jiraEmail,
+  setJiraEmail,
+  jiraToken,
+  setJiraToken,
+  ghRepo,
+  setGhRepo,
+  ghToken,
+  setGhToken,
+}: {
+  onResetAll: () => void
+  loading: boolean
+  jiraUrl: string
+  setJiraUrl: (v: string) => void
+  jiraEmail: string
+  setJiraEmail: (v: string) => void
+  jiraToken: string
+  setJiraToken: (v: string) => void
+  ghRepo: string
+  setGhRepo: (v: string) => void
+  ghToken: string
+  setGhToken: (v: string) => void
+}) {
+  return (
+    <>
+      <header className="main-header">
+        <div>
+          <h1>Settings</h1>
+          <p>API credentials and workspace</p>
+        </div>
+      </header>
+      <div className="settings-cards">
+        <div className="card" style={{ maxWidth: 520 }}>
+          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
+            <FileCode size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+            Jira API & credentials
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
+            Configure once; use project/board on the main Export section.
+          </p>
+          <div className="input-group">
+            <Tooltip content="Your Atlassian Jira instance URL">
+              <label htmlFor="settings-jira-url">URL</label>
+            </Tooltip>
+            <input id="settings-jira-url" type="text" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} placeholder="https://your-domain.atlassian.net" />
+          </div>
+          <div className="input-group">
+            <Tooltip content="Email used for Jira API authentication">
+              <label htmlFor="settings-jira-email">Email</label>
+            </Tooltip>
+            <input id="settings-jira-email" type="text" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder="you@company.com" />
+          </div>
+          <div className="input-group">
+            <Tooltip content="API token from Atlassian (leave blank to use server .env)">
+              <label htmlFor="settings-jira-token">API token</label>
+            </Tooltip>
+            <input id="settings-jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
+          </div>
+        </div>
+        <div className="card" style={{ maxWidth: 520 }}>
+          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
+            <Github size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+            GitHub API & credentials
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
+            Repo and token for creating issues from the main Export section.
+          </p>
+          <div className="input-group">
+            <Tooltip content="Repository as owner/name (e.g. owner/repo)">
+              <label htmlFor="settings-gh-repo">Repo (owner/name)</label>
+            </Tooltip>
+            <input id="settings-gh-repo" type="text" value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="owner/repo" />
+          </div>
+          <div className="input-group">
+            <Tooltip content="Personal access token for GitHub API">
+              <label htmlFor="settings-gh-token">Token</label>
+            </Tooltip>
+            <input id="settings-gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
+          </div>
+        </div>
+        <div className="card" style={{ maxWidth: 480 }}>
+          <h3 style={{ margin: '0 0 var(--space-2)', fontSize: 'var(--text-base)' }}>Clear all data</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-5)', lineHeight: 1.5 }}>
+            Remove all documents, tasks, audit logs, export history, regulation versions, and calibration data. Use this to start completely fresh.
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onResetAll}
+            disabled={loading}
+            style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
+          >
+            {loading ? <Loader2 size={16} className="spinner" /> : <Trash2 size={16} />}
+            {loading ? 'Clearing…' : 'Clear all data'}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -1072,12 +1368,7 @@ function AuditPage({
           Refresh
         </button>
       </header>
-      {loading && entries.length === 0 ? (
-        <div className="alert alert-info">
-          <Loader2 size={18} className="spinner" />
-          Loading audit logs…
-        </div>
-      ) : entries.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="card">
           <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No audit entries yet.</p>
         </div>
@@ -1132,12 +1423,7 @@ function HistoryPage({
           Refresh
         </button>
       </header>
-      {loading && entries.length === 0 ? (
-        <div className="alert alert-info">
-          <Loader2 size={18} className="spinner" />
-          Loading history…
-        </div>
-      ) : entries.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="card">
           <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No export history yet. Create Jira tickets or GitHub issues to see them here.</p>
         </div>
@@ -1202,6 +1488,7 @@ function TaskCard({
   selected,
   onToggle,
   onUpdate,
+  onDelete,
   onCopyMarkdown,
   onCalibrationFeedback,
 }: {
@@ -1209,6 +1496,7 @@ function TaskCard({
   selected: boolean
   onToggle: () => void
   onUpdate: (updates: Partial<ExtractionTask>) => void
+  onDelete?: () => void
   onCopyMarkdown?: () => void
   onCalibrationFeedback?: (taskId: string, title: string, correct: boolean) => void
 }) {
@@ -1361,13 +1649,25 @@ function TaskCard({
             <Tooltip content="Edit task details before exporting">
             <button
               className="btn btn-secondary btn-sm"
-              style={{ marginTop: 'var(--space-3)' }}
               onClick={() => setEditing(true)}
             >
               <Pencil size={14} />
               Edit task
             </button>
             </Tooltip>
+            {onDelete && (
+              <Tooltip content="Delete task">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--error)' }}
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              </Tooltip>
+            )}
             </div>
           ) : (
             <div className="edit-form">

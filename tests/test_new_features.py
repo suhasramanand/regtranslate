@@ -61,6 +61,38 @@ class TestRegulationVersion:
         assert rec is not None
         assert rec.regulation_name == "FDA"
 
+    def test_check_content_changed_no_previous(self):
+        result = regulation_version.check_content_changed(
+            "HIPAA", "new_file.pdf", b"new content"
+        )
+        assert result["content_changed"] is False
+        assert result["previous_processed_at"] is None
+
+    def test_check_content_changed_same_content(self):
+        content = b"unchanged content"
+        regulation_version.record_version("doc-x", "GDPR", "gdpr.pdf", content, 5)
+        result = regulation_version.check_content_changed("GDPR", "gdpr.pdf", content)
+        assert result["content_changed"] is False
+        assert result["previous_processed_at"] is not None
+
+    def test_check_content_changed_different_content(self):
+        content = b"original version"
+        regulation_version.record_version("doc-y", "FDA", "fda.pdf", content, 3)
+        result = regulation_version.check_content_changed(
+            "FDA", "fda.pdf", b"updated version"
+        )
+        assert result["content_changed"] is True
+        assert result["previous_processed_at"] is not None
+
+    def test_check_content_changed_versioned_filename(self):
+        content = b"original"
+        regulation_version.record_version("doc-z", "HIPAA", "sample-hipaa-regulation.pdf", content, 5)
+        result = regulation_version.check_content_changed(
+            "HIPAA", "sample-hipaa-regulation-v2.pdf", b"updated content"
+        )
+        assert result["content_changed"] is True
+        assert result["previous_processed_at"] is not None
+
 
 class TestConfidenceCalibration:
     """Test confidence calibration."""
