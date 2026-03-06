@@ -70,10 +70,15 @@ export function HeroPage() {
           and export directly to Jira or GitHub — so your team can ship compliant software faster.
         </p>
 
-        <Link to="/dashboard" className="hero-cta">
-          Get started
-          <ArrowRight size={20} aria-hidden />
-        </Link>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', justifyContent: 'center' }}>
+          <Link to="/dashboard" className="hero-cta">
+            Get started
+            <ArrowRight size={20} aria-hidden />
+          </Link>
+          <Link to="/demo-flow" className="hero-cta hero-cta-secondary">
+            See pipeline flow
+          </Link>
+        </div>
 
         <section className="hero-faq" aria-labelledby="faq-heading">
           <h2 id="faq-heading" className="hero-faq-title">

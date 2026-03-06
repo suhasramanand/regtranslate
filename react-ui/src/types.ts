@@ -3,6 +3,11 @@ export interface ExtractionSubtask {
   description: string
 }
 
+export interface EvidenceLink {
+  url: string
+  label?: string
+}
+
 export interface ExtractionTask {
   task_id: string
   title: string
@@ -16,6 +21,7 @@ export interface ExtractionTask {
   also_satisfies: string[]
   confidence?: number | null
   subtasks: ExtractionSubtask[]
+  evidence_links?: EvidenceLink[]
 }
 
 export interface ProcessResponse {

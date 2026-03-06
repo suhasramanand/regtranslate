@@ -28,6 +28,12 @@ def _get_client():
     return _client
 
 
+def reset_client() -> None:
+    """Clear the cached ChromaDB client. Call after resetting chroma_db directory."""
+    global _client
+    _client = None
+
+
 def _collection_name(doc_id: str) -> str:
     """Sanitize doc_id for use as Chroma collection name."""
     return "rt_" + "".join(c if c.isalnum() or c in "-_" else "_" for c in doc_id)

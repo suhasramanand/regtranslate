@@ -1,6 +1,6 @@
-/* Design system: modern, minimalist, HCI-aligned */
+/* RegTranslate — AI startup aesthetic design system */
 :root {
-  /* Spacing scale (4px base) */
+  /* Spacing (4px base) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -10,9 +10,11 @@
   --space-8: 32px;
   --space-10: 40px;
   --space-12: 48px;
+  --space-16: 64px;
 
-  /* Typography */
-  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Typography - AI startup feel */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Space Grotesk', var(--font-sans);
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
@@ -20,55 +22,77 @@
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
   --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
   --leading-tight: 1.25;
   --leading-normal: 1.5;
   --leading-relaxed: 1.625;
 
-  /* Colors - minimal palette */
-  --bg: #fafafa;
+  /* Colors — light: clean, airy */
+  --bg: #f8fafc;
   --bg-elevated: #ffffff;
-  --bg-hover: #f5f5f5;
-  --border: #e5e5e5;
-  --border-focus: #171717;
-  --text: #171717;
-  --text-secondary: #737373;
-  --text-tertiary: #a3a3a3;
-  --accent: #171717;
-  --accent-hover: #404040;
-  --success: #16a34a;
-  --success-bg: #dcfce7;
+  --bg-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-focus: #0f172a;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
+  --accent-glow: rgba(13, 148, 136, 0.3);
+  --accent-gradient: linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #2dd4bf 100%);
+  --success: #059669;
+  --success-bg: #d1fae5;
   --error: #dc2626;
   --error-bg: #fee2e2;
-  --warning: #ca8a04;
-  --warning-bg: #fef9c3;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --version-change-bg: #fffbeb;
+  --version-change-text: #92400e;
+  --version-change-border: #fcd34d;
 
-  /* Radii - subtle */
+  /* Glass */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-blur: 12px;
+
+  /* Radii */
   --radius-sm: 6px;
   --radius: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
 
   /* Transitions */
-  --transition: 150ms ease;
+  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Dark mode */
+/* Dark mode — premium, developer-focused */
 [data-theme='dark'] {
-  --bg: #0a0a0a;
-  --bg-elevated: #171717;
-  --bg-hover: #262626;
-  --border: #262626;
-  --border-focus: #fafafa;
-  --text: #fafafa;
-  --text-secondary: #a3a3a3;
-  --text-tertiary: #737373;
-  --accent: #fafafa;
-  --accent-hover: #e5e5e5;
-  --success: #22c55e;
-  --success-bg: #14532d;
-  --error: #ef4444;
-  --error-bg: #450a0a;
-  --warning: #eab308;
-  --warning-bg: #422006;
+  --bg: #0a0a0f;
+  --bg-elevated: #12121a;
+  --bg-hover: #1a1a24;
+  --border: #27272f;
+  --border-focus: #6ee7b7;
+  --text: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-glow: rgba(45, 212, 191, 0.25);
+  --accent-gradient: linear-gradient(135deg, #0f766e 0%, #2dd4bf 50%, #5eead4 100%);
+  --success: #34d399;
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --error: #f87171;
+  --error-bg: rgba(220, 38, 38, 0.15);
+  --warning: #fbbf24;
+  --warning-bg: rgba(217, 119, 6, 0.15);
+  --version-change-bg: rgba(251, 191, 36, 0.12);
+  --version-change-text: #fcd34d;
+  --version-change-border: rgba(251, 191, 36, 0.4);
+
+  --glass-bg: rgba(18, 18, 26, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: 16px;
 }
 
 * {
@@ -84,6 +108,7 @@ body {
   background: var(--bg);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background var(--transition), color var(--transition);
 }
 
@@ -102,12 +127,13 @@ textarea {
   font-family: inherit;
 }
 
-/* Focus visible for accessibility (HCI: keyboard navigation) */
 :focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
-.text-xs {
-  font-size: var(--text-xs);
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }

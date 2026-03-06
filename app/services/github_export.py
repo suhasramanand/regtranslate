@@ -28,6 +28,14 @@ def _format_body(t: ExtractionTask) -> str:
     if t.also_satisfies:
         parts.append("")
         parts.append("**Also satisfies:** " + ", ".join(t.also_satisfies))
+    evidence = getattr(t, "evidence_links", None) or []
+    if evidence:
+        parts.append("")
+        parts.append("**Evidence:**")
+        for e in evidence:
+            url = getattr(e, "url", "")
+            label = getattr(e, "label", url) or url
+            parts.append(f"- [{label}]({url})")
     return "\n".join(parts)
 
 
@@ -47,9 +55,34 @@ def export_to_github(
         raise ValueError("GitHub token and repo (owner/name) required.")
 
     from github import Github
+    from github.GithubException import GithubException
+
+    def _user_message(exc: GithubException, repo_name: str) -> str:
+        status = getattr(exc, "status", None)
+        if status == 404:
+            return (
+                f"Repository '{repo_name}' not found. "
+                "Use format owner/repo (e.g. suhasramanand/regtranslate). "
+                "Ensure the repo exists and your token has access."
+            )
+        if status == 401:
+            return "GitHub token invalid or expired. Create a new token at github.com/settings/tokens with repo scope."
+        if status == 403:
+            return f"No permission to create issues in '{repo_name}'. Check token scopes (need 'repo') and repo access."
+        msg = str(exc)
+        if "404" in msg or "Not Found" in msg:
+            return (
+                f"Repository '{repo_name}' not found. "
+                "Use format owner/repo (e.g. owner/repo). "
+                "Ensure the repo exists and your token has access."
+            )
+        return f"GitHub API error: {msg}"
 
     gh = Github(token)
-    repo = gh.get_repo(repo_full_name)
+    try:
+        repo = gh.get_repo(repo_full_name)
+    except GithubException as e:
+        raise ValueError(_user_message(e, repo_full_name)) from e
     created: list[str] = []
     for t in tasks:
         body = _format_body(t)
@@ -60,8 +93,8 @@ def export_to_github(
         try:
             issue = repo.create_issue(title=t.title, body=body, labels=labels)
             created.append(issue.html_url or str(issue.number))
-        except Exception:
-            raise
+        except GithubException as e:
+            raise ValueError(_user_message(e, repo_full_name)) from e
         if rate_limit_delay > 0:
             time.sleep(rate_limit_delay)
     return created

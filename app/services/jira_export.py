@@ -74,6 +74,13 @@ def _format_description(t: ExtractionTask) -> str:
     parts.append(f"*Citation:* {t.source_citation}")
     if t.source_text:
         parts.append(f"*Quote:* {t.source_text[:600]}{'...' if len(t.source_text) > 600 else ''}")
+    evidence = getattr(t, "evidence_links", None) or []
+    if evidence:
+        parts.extend(["", "h3. Evidence", ""])
+        for e in evidence:
+            url = getattr(e, "url", "")
+            label = getattr(e, "label", url) or url
+            parts.append(f"* [{label}|{url}]")
     return "\n".join(parts)
 
 

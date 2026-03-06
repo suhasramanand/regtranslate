@@ -2,6 +2,18 @@ import type { ExtractionTask, ExtractResponse, ProcessResponse } from './types'
 
 const API_BASE = '/api'
 
+export interface FlowStage {
+  id: string
+  title: string
+  desc: string
+  duration_ms: number
+  details?: string[]
+}
+
+export async function getFlowStages(): Promise<{ stages: FlowStage[] }> {
+  return fetchApi<{ stages: FlowStage[] }>('/demo/flow-stages')
+}
+
 export async function getJiraConfig(): Promise<{ url: string; email: string; api_token: string }> {
   return fetchApi<{ url: string; email: string; api_token: string }>('/config/jira')
 }
@@ -49,6 +61,25 @@ export async function getAuditLogs(limit?: number, since?: string): Promise<{ en
   return fetchApi<{ entries: AuditLogEntry[] }>(`/audit/logs${q}`)
 }
 
+export async function appendAuditLog(params: {
+  user_id: string
+  action: string
+  resource_accessed: string
+  source_ip?: string
+  details?: string
+}): Promise<{ ok: boolean; entry_hash: string }> {
+  return fetchApi<{ ok: boolean; entry_hash: string }>('/audit/log', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: params.user_id,
+      action: params.action,
+      resource_accessed: params.resource_accessed,
+      source_ip: params.source_ip ?? '',
+      details: params.details ?? '',
+    }),
+  })
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
@@ -84,17 +115,20 @@ export async function processDocument(
 }
 
 export async function extractTasks(params: {
-  doc_id: string
+  doc_id?: string
+  doc_ids?: string[]
   regulation_name: string
   dedupe?: boolean
   return_coverage?: boolean
   product_context?: string | null
   rag_query?: string | null
 }): Promise<ExtractResponse> {
+  const ids = params.doc_ids ?? (params.doc_id ? [params.doc_id] : [])
   return fetchApi<ExtractResponse>('/extract', {
     method: 'POST',
     body: JSON.stringify({
-      doc_id: params.doc_id,
+      doc_id: ids[0] ?? '',
+      doc_ids: ids.length > 0 ? ids : undefined,
       regulation_name: params.regulation_name,
       dedupe: params.dedupe ?? true,
       return_coverage: params.return_coverage ?? true,
@@ -143,5 +177,105 @@ export async function exportToGitHub(params: {
       repo: params.repo,
       token: params.token,
     }),
+  })
+}
+
+// --- Regulation version tracking ---
+export async function getRegulationVersions(regulationName?: string, limit?: number): Promise<{ versions: Array<{ doc_id: string; regulation_name: string; source_filename: string; content_hash: string; processed_at: string; version_label: string; chunk_count: number }> }> {
+  const params = new URLSearchParams()
+  if (regulationName) params.set('regulation_name', regulationName)
+  if (limit != null) params.set('limit', String(limit))
+  const q = params.toString() ? `?${params}` : ''
+  return fetchApi(`/regulation/versions${q}`)
+}
+
+export async function checkRegulationUpdate(docId: string, file: File): Promise<{ needs_update: boolean; current_hash?: string; new_hash: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/regulation/check-update?doc_id=${encodeURIComponent(docId)}`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? res.statusText)
+  }
+  return res.json()
+}
+
+export async function checkRegulationContentChange(
+  file: File,
+  regulationName: string,
+): Promise<{ content_changed: boolean; previous_processed_at: string | null }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(
+    `${API_BASE}/regulation/check-content-change?regulation_name=${encodeURIComponent(regulationName)}`,
+    { method: 'POST', body: formData },
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? res.statusText)
+  }
+  return res.json()
+}
+
+// --- Compliance Q&A agent ---
+export interface QAScreenContext {
+  regulation_name?: string
+  task_count?: number
+  tasks?: Array<{ title: string; priority?: string }>
+  coverage?: { chunk_count?: number; pages_summary?: string; sections?: string[] }
+  recent_exports?: Array<{
+    target: string
+    task_count: number
+    project_key?: string
+    keys?: string[]
+    timestamp?: string
+  }>
+}
+
+export async function qaAsk(
+  docId: string,
+  question: string,
+  screenContext?: QAScreenContext | null
+): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
+  return fetchApi('/qa', {
+    method: 'POST',
+    body: JSON.stringify({ doc_id: docId, question, screen_context: screenContext ?? undefined }),
+  })
+}
+
+// --- Cross-regulation gap analysis ---
+export async function gapAnalysis(params: { tasks_a: ExtractionTask[]; tasks_b: ExtractionTask[]; label_a?: string; label_b?: string }): Promise<{
+  overlap: Array<{ task_a: ExtractionTask; task_b: ExtractionTask; similarity: number }>
+  unique_to_a: ExtractionTask[]
+  unique_to_b: ExtractionTask[]
+  label_a: string
+  label_b: string
+}> {
+  return fetchApi('/gap-analysis', {
+    method: 'POST',
+    body: JSON.stringify({
+      tasks_a: params.tasks_a,
+      tasks_b: params.tasks_b,
+      label_a: params.label_a ?? 'A',
+      label_b: params.label_b ?? 'B',
+    }),
+  })
+}
+
+// --- Confidence calibration ---
+export async function submitCalibrationFeedback(taskId: string, title: string, correct: boolean): Promise<{ ok: boolean }> {
+  return fetchApi('/calibration/feedback', { method: 'POST', body: JSON.stringify({ task_id: taskId, title, correct }) })
+}
+
+export async function getCalibrationStats(): Promise<{ total_feedback_entries: number; tasks_with_feedback: number; average_accuracy: number }> {
+  return fetchApi('/calibration/stats')
+}
+
+export async function resetAllData(): Promise<{ ok: boolean; cleared: string[] }> {
+  return fetchApi<{ ok: boolean; cleared: string[] }>('/settings/reset-all', {
+    method: 'POST',
   })
 }
