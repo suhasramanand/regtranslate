@@ -79,77 +79,114 @@
   color: white;
 }
 
-/* Graph view - tree with curved connections */
+/* Graph view - React Flow pipeline */
 .flow-graph-wrap {
   width: 100%;
-  max-width: 960px;
-  margin-bottom: var(--space-4);
+  max-width: 100%;
+  margin-bottom: var(--space-6);
 }
 
-.flow-graph-svg.flow-graph-tree {
+.flow-rf-container {
   width: 100%;
-  min-height: 320px;
-  overflow: visible;
+  height: 240px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
 }
 
-.flow-graph-node {
-  cursor: pointer;
-  transition: transform 0.2s ease;
+.flow-rf-container .react-flow__background {
+  background: var(--bg-secondary);
 }
 
-.flow-graph-node:hover {
-  transform: scale(1.08);
+.flow-rf-container .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-.flow-graph-node circle {
-  transition: all 0.3s ease;
-}
-
-.flow-graph-node.active circle {
-  filter: drop-shadow(0 0 16px rgba(13, 148, 136, 0.35));
-}
-
-.flow-graph-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 20px;
+.flow-rf-container .react-flow__controls button {
+  background: var(--bg-secondary);
+  border-color: var(--border);
   color: var(--text-secondary);
 }
 
-.flow-graph-node.active .flow-graph-icon-wrap {
-  color: var(--accent);
+.flow-rf-container .react-flow__controls button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
-.flow-graph-label {
-  font-size: 11px;
-  fill: var(--text-secondary);
+.flow-rf-handle {
+  width: 8px;
+  height: 8px;
+  background: var(--border);
+  border: none;
+}
+
+.flow-rf-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  min-width: 120px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.flow-graph-node.active .flow-graph-label {
-  fill: var(--accent);
+.flow-rf-node:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
-.flow-graph-child {
-  pointer-events: none;
+.flow-rf-node.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(13, 148, 136, 0.06);
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
 }
 
-.flow-graph-child-label {
-  font-size: 10px;
-  fill: var(--text-tertiary);
-  font-weight: 500;
-  max-width: 140px;
+.flow-rf-node.past {
+  border-color: rgba(13, 148, 136, 0.4);
+  color: var(--text);
 }
 
-.flow-graph-child.active .flow-graph-child-label {
-  fill: var(--text-secondary);
+.flow-rf-node-icon {
+  flex-shrink: 0;
+  color: inherit;
+  display: flex;
+  align-items: center;
 }
 
-.flow-graph-child.past .flow-graph-child-label {
-  fill: var(--accent);
-  opacity: 0.9;
+.flow-rf-node-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-rf-node-check {
+  flex-shrink: 0;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+}
+
+/* React Flow edge states */
+.flow-rf-container .react-flow__edge.edge-done path {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.flow-rf-container .react-flow__edge.edge-pending path {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
 }
 
 .flow-graph-details {

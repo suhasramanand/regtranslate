@@ -2,15 +2,30 @@ All Rights Reserved
 
 Copyright (c) 2025 RegTranslate
 
-This license applies to the entire repository and all of its contents, including but not
-limited to: source code (frontend and backend), configuration files, documentation,
-scripts, styles, assets, and any other files contained herein (collectively, the
-"Software").
+This license applies to the entire repository and all of its contents, including all
+branches (main, feature, release, or any other branch), and including but not limited
+to: source code (frontend and backend), configuration files, documentation, scripts,
+styles, assets, and any other files contained herein (collectively, the "Software").
+No branch of this repository is or may be offered under any other license. The terms
+herein govern all branches uniformly.
 
-The Software is the proprietary property of the copyright holder. No part of the Software
-may be reproduced, distributed, modified, or used in any form or by any means without
-prior written permission from the copyright holder.
+The Software is the exclusive proprietary property of the copyright holder. All rights
+are reserved. No rights of any kind are granted, either expressly, implied, by estoppel,
+or otherwise. Any use of the Software is prohibited unless explicitly authorized in
+writing by the copyright holder.
 
-Unauthorized use, copying, modification, distribution, or exploitation of this Software,
-in whole or in part, is strictly prohibited and may result in severe civil and criminal
-penalties.
+PROHIBITED ACTS (without prior written authorization):
+- Copying, reproducing, distributing, or sharing the Software (in whole or in part)
+- Modifying, adapting, translating, or creating derivative works
+- Reverse engineering, decompiling, disassembling, or extracting source code
+- Using the Software for any purpose (commercial, non-commercial, personal, internal,
+  educational, evaluation, benchmarking, testing, or otherwise)
+- Hosting, operating, or offering the Software as a service (SaaS, API, or otherwise)
+- Sublicensing, assigning, or transferring any rights
+- Removing or altering any copyright, trademark, or proprietary notices
+
+No exception applies for "fair use," "educational use," "personal use," "internal use,"
+or any similar claim. The prohibition is absolute absent written authorization.
+
+Unauthorized use may result in injunctive relief, damages, and criminal prosecution to
+the fullest extent permitted by law.
