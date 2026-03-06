@@ -1,0 +1,7 @@
+{
+  "installCommand": "cd react-ui && npm ci",
+  "buildCommand": "cd react-ui && npm run build",
+  "outputDirectory": "react-ui/dist",
+  "framework": null,
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
