@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .env
+.env.local
+.env.*.local
 chroma_db/
 *.pdf
 .pytest_cache/
@@ -10,8 +12,17 @@ chroma_db/
 dist/
 build/
 streamlit_app_log.txt
+*.log
 audit_logs/
 export_history/
 regulation_versions/
 calibration/
 .vercel
+.cursor
+node_modules/
+.DS_Store
+.idea/
+.vscode/
+coverage/
+htmlcov/
+.coverage

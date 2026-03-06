@@ -46,3 +46,10 @@ GROQ_MAX_TOKENS = 4096
 AUDIT_LOG_DIR = Path(os.getenv("AUDIT_LOG_DIR", "./audit_logs"))
 AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 AUDIT_RETENTION_YEARS = int(os.getenv("AUDIT_RETENTION_YEARS", "6"))
+
+# CORS: comma-separated origins, or * for allow all
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").strip()
+if CORS_ORIGINS == "*":
+    CORS_ORIGINS_LIST = ["*"]
+else:
+    CORS_ORIGINS_LIST = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
