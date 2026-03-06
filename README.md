@@ -13,3 +13,4 @@ AI-powered tool that converts regulatory documents (HIPAA, GDPR, ADA/WCAG, FDA 2
 For setup, architecture, and deployment: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [DEPLOYMENT.md](DEPLOYMENT.md).
 
 **License:** All Rights Reserved. Proprietary — [LICENSE](LICENSE)
+
