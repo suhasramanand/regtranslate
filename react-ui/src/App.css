@@ -200,7 +200,7 @@
   pointer-events: auto;
 }
 
-/* Right-side Q&A panel - Cursor-style collapsible */
+/* Right-side Q&A panel - collapsible */
 .qa-panel-tab {
   position: fixed;
   top: 50%;

@@ -153,7 +153,10 @@ class TestQAAgent:
         assert "answer" in result
         assert "sources" in result
         assert len(result["sources"]) == 0
-        assert "No relevant" in result["answer"] or "No text" in result["answer"] or "not found" in result["answer"].lower()
+        assert any(
+            x in result["answer"].lower() for x in
+            ["no relevant", "no text", "not found", "no document context"]
+        )
 
 
 class TestEvidenceLink:

@@ -8,21 +8,44 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.config import CORS_ORIGINS_LIST
 from app.models.schemas import EvidenceLink
 from app.services import embeddings, pdf_processor, task_generator, vector_store
+
+_VERSION = "1.0.0"
+try:
+    _vpath = Path(__file__).resolve().parents[1].parent / "VERSION"
+    if _vpath.exists():
+        _VERSION = _vpath.read_text().strip()
+except Exception:
+    pass
 
 app = FastAPI(
     title="RegTranslate",
     description="AI-powered regulatory document to developer task converter",
-    version="0.1.0",
+    version=_VERSION,
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS_LIST,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 api = APIRouter()
 
@@ -60,7 +83,16 @@ class ExtractResponse(BaseModel):
 
 @api.get("/health")
 def health():
-    return {"status": "ok"}
+    """Liveness: is the process running?"""
+    return {"status": "ok", "version": _VERSION}
+
+
+@api.get("/ready")
+def ready():
+    """Readiness: can the app accept traffic? (ChromaDB dir, config basic checks)."""
+    from app.config import CHROMA_PERSIST_DIR
+    ok = CHROMA_PERSIST_DIR.exists() and CHROMA_PERSIST_DIR.is_dir()
+    return {"status": "ready" if ok else "degraded", "chroma_dir": str(CHROMA_PERSIST_DIR)}
 
 
 FLOW_STAGES = [
