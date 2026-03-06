@@ -14,3 +14,4 @@ audit_logs/
 export_history/
 regulation_versions/
 calibration/
+.vercel
