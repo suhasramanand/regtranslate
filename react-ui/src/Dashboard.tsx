@@ -557,21 +557,8 @@ export function Dashboard() {
     }
   }, [tasks.length])
 
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === 'e' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-        e.preventDefault()
-        if (docId && !loading) handleExtract()
-      }
-      if (e.key === 's' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-        e.preventDefault()
-        if (tasks.length && selectedTasks.size && jiraProject) handleExportJira()
-      }
-    }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [docId, loading, tasks.length, selectedTasks.size, jiraProject])
+  const handleExtractRef = useRef<() => void>(() => {})
+  const handleExportJiraRef = useRef<() => void>(() => {})
 
   const clearMessages = () => {
     setError(null)
@@ -739,6 +726,26 @@ export function Dashboard() {
       setLoading(null)
     }
   }
+
+  useEffect(() => {
+    handleExtractRef.current = handleExtract
+    handleExportJiraRef.current = handleExportJira
+  })
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'e' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault()
+        if (docId && !loading) handleExtractRef.current()
+      }
+      if (e.key === 's' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault()
+        if (tasks.length && selectedTasks.size && jiraProject) handleExportJiraRef.current()
+      }
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [docId, loading, tasks.length, selectedTasks.size, jiraProject])
 
   const handleExportGitHub = async () => {
     if (isDemoMode) {

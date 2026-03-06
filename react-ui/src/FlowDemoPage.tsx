@@ -209,7 +209,7 @@ export function FlowDemoPage() {
   }, [playing, currentIndex, stages, goNext])
 
   useEffect(() => {
-    setExpanded(currentIndex)
+    queueMicrotask(() => setExpanded(currentIndex))
     activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [currentIndex])
 
