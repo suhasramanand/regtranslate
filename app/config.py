@@ -37,6 +37,15 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 CHROMA_PERSIST_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"))
 CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
+# Compliance scanner / code-RAG: separate DB so an old or corrupted regulation chroma_db does not break scans.
+_chroma_code_env = os.getenv("CHROMA_CODE_PERSIST_DIR", "").strip()
+CHROMA_CODE_PERSIST_DIR = (
+    Path(_chroma_code_env).expanduser()
+    if _chroma_code_env
+    else CHROMA_PERSIST_DIR.parent / "chroma_scanner_code"
+)
+CHROMA_CODE_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_TEMPERATURE = 0.1

@@ -41,8 +41,12 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Add GROQ_API_KEY (required for extraction)
+# Add GROQ_API_KEY (required for extraction and for Dashboard “Multi-step Q&A”, which uses ChatGroq + LangGraph on `/qa`)
 # Optional: GOOGLE_API_KEY, CHROMA_PERSIST_DIR
+#
+# Tests: if pytest fails with `No module named 'langsmith.pytest_plugin'`, run:
+#   chmod +x scripts/run_pytest.sh && ./scripts/run_pytest.sh tests/ -q
+# or: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q`
 ```
 
 ### 3. Run

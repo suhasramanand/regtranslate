@@ -13,7 +13,11 @@ class RepoProvider(str, Enum):
 
 class OrgSource(BaseModel):
     provider: RepoProvider = RepoProvider.github
-    org: str = Field(..., min_length=1, description="GitHub organization login")
+    org: str = Field(
+        ...,
+        min_length=1,
+        description="GitHub organization login or personal account username (owner)",
+    )
 
 
 class RepoRef(BaseModel):

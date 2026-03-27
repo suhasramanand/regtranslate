@@ -22,7 +22,7 @@ export function MarketingSubpageLayout({
             <Link to="/login" className="mkt-sub-login">
               Log in
             </Link>
-            <Link to="/dashboard?demo=1" className="mkt-sub-cta">
+            <Link to="/signup" className="mkt-sub-cta">
               Get Started
             </Link>
           </div>

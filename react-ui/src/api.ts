@@ -235,14 +235,35 @@ export interface QAScreenContext {
   }>
 }
 
+export interface QAAgentStep {
+  step: number
+  tool: string
+  detail: string
+  ts?: number
+}
+
 export async function qaAsk(
   docId: string,
   question: string,
-  screenContext?: QAScreenContext | null
-): Promise<{ answer: string; sources: Array<{ text: string; page: string | number; section: string }> }> {
+  screenContext?: QAScreenContext | null,
+  options?: { useAgent?: boolean; maxAgentSteps?: number }
+): Promise<{
+  answer: string
+  sources: Array<{ text: string; page: string | number; section: string }>
+  agent_steps?: QAAgentStep[]
+}> {
+  const body: Record<string, unknown> = {
+    doc_id: docId,
+    question,
+    screen_context: screenContext ?? undefined,
+  }
+  if (options?.useAgent) {
+    body.use_agent = true
+    if (options.maxAgentSteps != null) body.max_agent_steps = options.maxAgentSteps
+  }
   return fetchApi('/qa', {
     method: 'POST',
-    body: JSON.stringify({ doc_id: docId, question, screen_context: screenContext ?? undefined }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -320,6 +341,8 @@ export interface ScannerRun {
     findings_non_compliant: number
     findings_unknown: number
   }
+  /** Populated when status is failed (and sometimes for partial errors). */
+  errors?: Array<{ message: string; at?: string; details?: Record<string, unknown> }>
 }
 
 export interface ScannerFinding {
@@ -399,6 +422,20 @@ export async function scannerGithubOrgRepos(
   if (opts?.githubToken?.trim()) headers['X-Scanner-GitHub-Token'] = opts.githubToken.trim()
   const q = opts?.limit != null ? `?limit=${encodeURIComponent(String(opts.limit))}` : ''
   return fetchScannerApi(`/github/orgs/${encodeURIComponent(org)}/repos${q}`, { headers })
+}
+
+/** Repositories for the signed-in GitHub user (personal account, includes private). */
+export async function scannerGithubUserRepos(opts?: {
+  limit?: number
+  githubToken?: string | null
+}): Promise<{
+  login: string
+  repos: Array<{ full_name: string; default_branch: string; private: boolean; description: string }>
+}> {
+  const headers: Record<string, string> = {}
+  if (opts?.githubToken?.trim()) headers['X-Scanner-GitHub-Token'] = opts.githubToken.trim()
+  const q = opts?.limit != null ? `?limit=${encodeURIComponent(String(opts.limit))}` : ''
+  return fetchScannerApi(`/github/user/repos${q}`, { headers })
 }
 
 export async function scannerGithubDisconnect(): Promise<{ ok: boolean }> {

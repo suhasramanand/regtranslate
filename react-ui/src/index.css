@@ -56,8 +56,9 @@
   --glass-border: rgba(255, 255, 255, 0.3);
   --glass-blur: 12px;
 
-  /* Layout — align with marketing pages */
-  --app-max-width: 1120px;
+  /* Layout — dashboard comfortable reading width */
+  --app-max-width: 1180px;
+  --dashboard-sidebar-gutter: calc(72px + var(--space-4) * 2);
 
   /* Radii */
   --radius-sm: 6px;

@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from github import Github
+from github.GithubException import GithubException
 
+from .github_session import _github_client
 from .models import RepoRef
 
 
@@ -79,10 +80,11 @@ def _looks_binary(data: bytes) -> bool:
 
 def list_org_repos(org: str, token: str, repos: list[str] | None = None) -> list[RepoRef]:
     """
-    Resolve repos for an org (and their default-branch head SHA) using GitHub API.
+    Resolve repos for a GitHub org or a personal account (owner login), using the API.
     If `repos` is provided, it must contain full names (owner/repo) and will be validated.
+    When `org` matches the authenticated user's login, lists that user's repos (including private).
     """
-    gh = Github(token)
+    gh = _github_client(token)
     if repos:
         out: list[RepoRef] = []
         for full in repos:
@@ -92,9 +94,17 @@ def list_org_repos(org: str, token: str, repos: list[str] | None = None) -> list
             out.append(RepoRef(full_name=r.full_name, default_branch=branch, commit_sha=sha))
         return out
 
-    org_obj = gh.get_organization(org)
+    org = org.strip()
+    me = gh.get_user()
+    if me.login.lower() == org.lower():
+        repo_iter = me.get_repos()
+    else:
+        try:
+            repo_iter = gh.get_organization(org).get_repos()
+        except GithubException:
+            repo_iter = gh.get_user(org).get_repos()
     out = []
-    for r in org_obj.get_repos():
+    for r in repo_iter:
         branch = r.default_branch or "main"
         sha = r.get_branch(branch).commit.sha
         out.append(RepoRef(full_name=r.full_name, default_branch=branch, commit_sha=sha))

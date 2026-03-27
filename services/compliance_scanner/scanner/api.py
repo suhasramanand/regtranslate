@@ -21,6 +21,7 @@ from .github_session import (
     get_github_token_from_cookie,
     github_user_login,
     is_oauth_configured,
+    list_authenticated_user_repos_brief,
     list_org_repos_brief,
     list_user_orgs,
     new_oauth_state,
@@ -357,6 +358,21 @@ def create_app() -> FastAPI:
         except Exception as e:
             raise HTTPException(502, f"Failed to list repositories: {e}") from e
         return {"repos": repos}
+
+    @app.get("/github/user/repos")
+    def github_user_repos(
+        request: Request,
+        limit: int = 200,
+        x_scanner_github_token: str | None = Header(None, alias="X-Scanner-GitHub-Token"),
+    ):
+        token = resolve_github_token_for_api(request, x_scanner_github_token)
+        try:
+            login, repos = list_authenticated_user_repos_brief(
+                token, limit=min(max(limit, 1), 500)
+            )
+        except Exception as e:
+            raise HTTPException(502, f"Failed to list your repositories: {e}") from e
+        return {"login": login, "repos": repos}
 
     @app.get("/runs")
     def runs(limit: int = 50):

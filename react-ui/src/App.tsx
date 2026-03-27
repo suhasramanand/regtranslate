@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { HeroPage } from './HeroPage'
 import { LoginPage } from './LoginPage'
+import { SignupPage } from './SignupPage'
 import { DashboardRoute } from './DashboardRoute'
 import { ScannerLandingPage } from './ScannerLandingPage'
 import { ScannerPage } from './ScannerPage'
@@ -12,6 +13,7 @@ function App() {
     <Routes>
       <Route path="/" element={<HeroPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
       <Route path="/dashboard" element={<DashboardRoute />} />
       <Route path="/scanner" element={<ScannerLandingPage />} />
       <Route path="/about" element={<MarketingDocPage page="about" />} />

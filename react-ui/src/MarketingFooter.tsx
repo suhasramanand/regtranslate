@@ -39,6 +39,9 @@ export function MarketingFooter() {
                 <HashLink hash="pricing">Pricing</HashLink>
               </li>
               <li>
+                <Link to="/signup">Sign up</Link>
+              </li>
+              <li>
                 <Link to="/changelog">Changelog</Link>
               </li>
             </ul>

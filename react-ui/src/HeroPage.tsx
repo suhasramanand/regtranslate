@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   FileText,
@@ -16,24 +16,20 @@ import './HeroPage.css'
 
 const FAQ_ITEMS = [
   {
-    q: 'Which compliance frameworks do you support?',
-    a: 'HIPAA, GDPR, FDA-style quality rules, accessibility standards like WCAG, and custom control catalogs your team defines. We help you map documents and code to the obligations that matter for your programs.',
+    q: 'How does PDF automation work?',
+    a: 'We turn long regulatory PDFs into clear, structured tasks—no manual copy-paste. You review what matters, then send it to your team’s tools in a few clicks.',
   },
   {
-    q: 'How does repo scanning work?',
-    a: 'We connect to your GitHub or GitLab repos via a read-only token, scan for configuration, code patterns, and infrastructure-as-code files, then map findings to the requirements extracted from your compliance documents.',
+    q: 'Can I connect Jira or GitHub?',
+    a: 'Yes. Push requirements and findings into Jira or GitHub issues so compliance work lives alongside everything else your team already tracks.',
   },
   {
-    q: 'What integrations are available?',
-    a: 'Jira, GitHub Issues, GitLab Issues, Linear, and Slack — with webhooks for custom pipelines. We also support SSO via SAML 2.0 and SCIM provisioning.',
+    q: 'Does it scan code repositories?',
+    a: 'Yes. Connect your repos to spot gaps against your obligations and see concrete places to fix—not vague “check the policy” reminders.',
   },
   {
-    q: 'Can I customise the tickets pushed to Jira?',
-    a: 'Yes. Project, fields, and issue content follow the structure you configure so tickets land in the format your program already uses.',
-  },
-  {
-    q: 'Is my data secure?',
-    a: 'Data stays within the boundaries you configure for your deployment. Use your own hosting and identity providers to meet internal security and audit requirements.',
+    q: 'Who is RegTranslate for?',
+    a: 'Compliance leads, product owners, and engineers at regulated companies who want calmer audits, less busywork, and one place to connect documents, code, and tickets.',
   },
 ]
 
@@ -46,9 +42,82 @@ const MOCK_FINDINGS = [
 
 const SCAN_DOC_COUNT = 12
 
+const PLATFORM_MEGA = [
+  {
+    label: 'Compliance tools',
+    items: [
+      {
+        title: 'PDF extraction',
+        desc: 'Convert regulatory PDFs into actionable tasks.',
+        to: '/#capabilities',
+      },
+      {
+        title: 'Jira integration',
+        desc: 'Sync compliance work directly to Jira.',
+        to: '/#how-it-works',
+      },
+      {
+        title: 'GitHub sync',
+        desc: 'Push findings to GitHub issues.',
+        to: '/#how-it-works',
+      },
+    ],
+  },
+  {
+    label: 'Automation',
+    items: [
+      {
+        title: 'Repo scanning',
+        desc: 'Scan codebases for compliance risks.',
+        to: '/scanner',
+      },
+      {
+        title: 'AI summaries',
+        desc: 'Get instant, clear compliance insights.',
+        to: '/#capabilities',
+      },
+      {
+        title: 'Audit trails',
+        desc: 'Track every change for full traceability.',
+        to: '/signup',
+      },
+    ],
+  },
+  {
+    label: 'Resources',
+    items: [
+      {
+        title: 'Documentation',
+        desc: 'Step-by-step guides for every feature.',
+        to: '/#faq',
+      },
+      {
+        title: 'API reference',
+        desc: 'Integrate with your existing stack.',
+        to: '/changelog',
+      },
+      {
+        title: 'Security',
+        desc: 'Enterprise-grade data protection.',
+        to: '/security',
+      },
+    ],
+  },
+] as const
+
+const HELP_LINKS = [
+  { title: 'Documentation', desc: 'Guides and FAQs.', to: '/#faq' },
+  { title: 'Contact', desc: 'Talk to the team.', to: '/contact' },
+  { title: 'Status', desc: 'Service health.', to: '/status' },
+] as const
+
 export function HeroPage() {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
+  const [platformOpen, setPlatformOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const megaRef = useRef<HTMLDivElement>(null)
+  const helpRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const id = location.hash?.replace(/^#/, '')
@@ -57,6 +126,27 @@ export function HeroPage() {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }, [location.pathname, location.hash])
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node
+      if (megaRef.current?.contains(t) || helpRef.current?.contains(t)) return
+      setPlatformOpen(false)
+      setHelpOpen(false)
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setPlatformOpen(false)
+        setHelpOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
 
   return (
     <div className="hero hero--marketing">
@@ -67,24 +157,105 @@ export function HeroPage() {
             <span className="hero-brand-translate">Translate</span>
           </Link>
           <nav className="hero-nav-center" aria-label="Product">
-            <a href="#capabilities" className="hero-nav-site-link">
-              Features
-            </a>
-            <a href="#how-it-works" className="hero-nav-site-link">
-              How It Works
-            </a>
-            <a href="#pricing" className="hero-nav-site-link">
+            <div className="hero-nav-dropdown" ref={megaRef}>
+              <button
+                type="button"
+                className="hero-nav-site-link hero-nav-site-link--trigger"
+                aria-expanded={platformOpen}
+                aria-haspopup="true"
+                aria-controls="hero-platform-mega"
+                id="hero-platform-trigger"
+                onClick={() => {
+                  setHelpOpen(false)
+                  setPlatformOpen((o) => !o)
+                }}
+              >
+                Platform
+                <ChevronDown size={16} strokeWidth={2} className="hero-nav-chevron" aria-hidden />
+              </button>
+              <div
+                id="hero-platform-mega"
+                className={`hero-mega-panel${platformOpen ? ' hero-mega-panel--open' : ''}`}
+                role="region"
+                aria-labelledby="hero-platform-trigger"
+                hidden={!platformOpen}
+              >
+                <div className="hero-mega-grid">
+                  {PLATFORM_MEGA.map((col) => (
+                    <div key={col.label} className="hero-mega-col">
+                      <p className="hero-mega-col-label">{col.label}</p>
+                      <ul className="hero-mega-list">
+                        {col.items.map((item) => (
+                          <li key={item.title}>
+                            <Link
+                              to={item.to}
+                              className="hero-mega-link"
+                              onClick={() => setPlatformOpen(false)}
+                            >
+                              <span className="hero-mega-link-title">{item.title}</span>
+                              <span className="hero-mega-link-desc">{item.desc}</span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Link to="/about" className="hero-nav-site-link">
+              Company
+            </Link>
+            <Link to="/blog" className="hero-nav-site-link">
+              Insights
+            </Link>
+            <Link to="/#pricing" className="hero-nav-site-link">
               Pricing
-            </a>
-            <a href="#faq" className="hero-nav-site-link">
-              Docs
-            </a>
+            </Link>
+            <div className="hero-nav-dropdown" ref={helpRef}>
+              <button
+                type="button"
+                className="hero-nav-site-link hero-nav-site-link--trigger"
+                aria-expanded={helpOpen}
+                aria-haspopup="true"
+                aria-controls="hero-help-menu"
+                id="hero-help-trigger"
+                onClick={() => {
+                  setPlatformOpen(false)
+                  setHelpOpen((o) => !o)
+                }}
+              >
+                Help
+                <ChevronDown size={16} strokeWidth={2} className="hero-nav-chevron" aria-hidden />
+              </button>
+              <div
+                id="hero-help-menu"
+                className={`hero-help-panel${helpOpen ? ' hero-help-panel--open' : ''}`}
+                aria-labelledby="hero-help-trigger"
+                hidden={!helpOpen}
+              >
+                <ul className="hero-help-list">
+                  {HELP_LINKS.map((item) => (
+                    <li key={item.to}>
+                      <Link
+                        to={item.to}
+                        className="hero-help-link"
+                        onClick={() => setHelpOpen(false)}
+                      >
+                        <span className="hero-mega-link-title">{item.title}</span>
+                        <span className="hero-mega-link-desc">{item.desc}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </nav>
           <div className="hero-header-actions">
             <Link to="/login" className="hero-nav-login">
               Log in
             </Link>
-            <Link to="/dashboard?demo=1" className="hero-btn-get-started">
+            <Link to="/signup" className="hero-btn-get-started">
               Get Started
             </Link>
             <button
@@ -113,7 +284,7 @@ export function HeroPage() {
                 deadline.
               </p>
               <div className="hero-cta-row-marketing">
-                <Link to="/dashboard?demo=1" className="hero-cta-marketing hero-cta-marketing--primary">
+                <Link to="/signup" className="hero-cta-marketing hero-cta-marketing--primary">
                   Start Free Trial
                 </Link>
                 <a href="mailto:hello@regtranslate.com" className="hero-cta-marketing hero-cta-marketing--outline">
@@ -247,7 +418,7 @@ export function HeroPage() {
               Start with the interactive demo, then talk to us for team deployment and security review.
             </p>
             <div className="hero-pricing-actions">
-              <Link to="/dashboard?demo=1" className="hero-cta-marketing hero-cta-marketing--primary">
+              <Link to="/signup" className="hero-cta-marketing hero-cta-marketing--primary">
                 Start free
                 <ArrowRight size={18} strokeWidth={2} aria-hidden />
               </Link>
@@ -258,20 +429,22 @@ export function HeroPage() {
           </section>
 
           <section className="hero-faq" id="faq" aria-labelledby="faq-heading">
-            <h2 id="faq-heading" className="hero-faq-heading">
-              Frequently asked questions
-            </h2>
-            <div className="hero-faq-list">
+            <header className="hero-faq-head">
+              <h2 id="faq-heading" className="hero-faq-heading">
+                Compliance clarity, zero guesswork
+              </h2>
+              <p className="hero-faq-sub">
+                Quick answers to your compliance workflow questions.
+              </p>
+            </header>
+            <dl className="hero-faq-grid">
               {FAQ_ITEMS.map((item) => (
-                <details key={item.q} className="hero-faq-item">
-                  <summary className="hero-faq-summary">
-                    {item.q}
-                    <ChevronDown size={18} strokeWidth={2} className="hero-faq-chevron" aria-hidden />
-                  </summary>
-                  <p className="hero-faq-answer">{item.a}</p>
-                </details>
+                <div key={item.q} className="hero-faq-row">
+                  <dt className="hero-faq-q">{item.q}</dt>
+                  <dd className="hero-faq-a">{item.a}</dd>
+                </div>
               ))}
-            </div>
+            </dl>
           </section>
         </div>
       </main>

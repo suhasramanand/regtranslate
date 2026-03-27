@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText,
+  FileCode,
   Loader2,
   Play,
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  ShieldCheck,
+  ScanLine,
   ExternalLink,
   Send,
   Moon,
@@ -15,6 +16,9 @@ import {
   Github,
   LogOut,
   Search,
+  History,
+  ShieldCheck,
+  Settings,
 } from 'lucide-react'
 import {
   SCANNER_API_BASE,
@@ -24,6 +28,7 @@ import {
   scannerGithubDisconnect,
   scannerGithubOrgRepos,
   scannerGithubOrgs,
+  scannerGithubUserRepos,
   scannerGithubPatLogin,
   scannerGithubSession,
   scannerGithubStatus,
@@ -32,6 +37,8 @@ import {
   type ScannerRun,
 } from './api'
 import { useTheme } from './useTheme'
+import { Tooltip } from './Tooltip'
+import { dashboardPath } from './dashboardPaths'
 import './App.css'
 import './ScannerPage.css'
 
@@ -56,7 +63,9 @@ export function ScannerPage() {
   const [runId, setRunId] = useState('')
   const [run, setRun] = useState<ScannerRun | null>(null)
   const [findings, setFindings] = useState<ScannerFinding[]>([])
-  const [loading, setLoading] = useState<false | 'start' | 'refresh' | 'jira' | 'repos' | 'orgs' | 'pat'>(false)
+  const [loading, setLoading] = useState<
+    false | 'start' | 'refresh' | 'jira' | 'repos' | 'user_repos' | 'orgs' | 'pat'
+  >(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -199,7 +208,7 @@ export function ScannerPage() {
 
   const loadRepos = async () => {
     if (!org.trim()) {
-      setError('Choose or enter an organization first.')
+      setError('Choose or enter an organization (or your GitHub username) first.')
       return
     }
     setLoading('repos')
@@ -211,6 +220,30 @@ export function ScannerPage() {
       setSuccess(`Loaded ${repos.length} repositories`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load repositories')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /** Personal repos (no GitHub org required). Uses the signed-in user or the credential in the field. */
+  const loadMyUserRepos = async () => {
+    if (!sessionLogin && !token.trim()) {
+      setError('Sign in with GitHub or enter a credential first.')
+      return
+    }
+    setLoading('repos')
+    setError(null)
+    try {
+      const { login, repos } = await scannerGithubUserRepos({
+        limit: 200,
+        githubToken: token.trim() || null,
+      })
+      setOrg(login)
+      setRepoList(repos)
+      setSelectedNames(new Set())
+      setSuccess(`Loaded ${repos.length} personal repositories for ${login}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load your repositories')
     } finally {
       setLoading(false)
     }
@@ -241,7 +274,7 @@ export function ScannerPage() {
 
   const startScan = async () => {
     if (!org.trim()) {
-      setError('Organization is required.')
+      setError('Enter an organization or your GitHub username (or use “Load my repositories”).')
       return
     }
     if (!scanAllOrg && selectedNames.size === 0) {
@@ -306,7 +339,7 @@ export function ScannerPage() {
   return (
     <div className="app">
       <header className="mobile-header">
-        <Link to="/dashboard" className="mobile-header-brand">
+        <Link to={dashboardPath()} className="mobile-header-brand">
           <FileText size={22} strokeWidth={2} />
           RegTranslate
         </Link>
@@ -314,17 +347,36 @@ export function ScannerPage() {
 
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <Link to="/dashboard" title="RegTranslate">
+          <Link to={dashboardPath()} title="RegTranslate">
             <FileText size={24} strokeWidth={2} />
           </Link>
         </div>
         <nav className="sidebar-nav">
-          <Link to="/dashboard" title="Dashboard">
-            <ShieldCheck size={20} />
-          </Link>
-          <Link to="/scanner/app" className="active" title="Compliance Scanner app">
-            <AlertTriangle size={20} />
-          </Link>
+          <Tooltip content="PDF → Jira / GitHub" side="right">
+            <Link to={dashboardPath()} title="PDF workflow">
+              <FileCode size={20} />
+            </Link>
+          </Tooltip>
+          <Tooltip content="Compliance Scanner" side="right">
+            <Link to="/scanner/app" className="active" title="Compliance Scanner">
+              <ScanLine size={20} />
+            </Link>
+          </Tooltip>
+          <Tooltip content="History" side="right">
+            <Link to={dashboardPath({ view: 'history' })} title="Export history">
+              <History size={20} />
+            </Link>
+          </Tooltip>
+          <Tooltip content="Audit trail" side="right">
+            <Link to={dashboardPath({ view: 'audit' })} title="Audit trail">
+              <ShieldCheck size={20} />
+            </Link>
+          </Tooltip>
+          <Tooltip content="Settings" side="right">
+            <Link to={dashboardPath({ view: 'settings' })} title="Settings">
+              <Settings size={20} />
+            </Link>
+          </Tooltip>
           <button
             type="button"
             className="theme-toggle"
@@ -338,24 +390,30 @@ export function ScannerPage() {
 
       <main className="main">
         <div className="main-inner scanner-main">
-          <header className="main-header main-header-split scanner-main-header">
-            <div className="scanner-main-header-text">
-              <h1>Compliance Scanner</h1>
-              <p>Pick repositories, run scans, export gaps to Jira</p>
+          <header className="workspace-header scanner-page-header">
+            <div className="workspace-header-main">
+              <span className="workspace-eyebrow">Compliance Scanner</span>
+              <h1>Repository scans</h1>
+              <p>
+                Connect GitHub, choose org or personal repos, run controls against your code, then push gaps to Jira when
+                you&apos;re ready.
+              </p>
             </div>
-            <button
-              type="button"
-              className={`scanner-header-github${oauthConfigured ? ' scanner-header-github--active' : ''}`}
-              onClick={connectGithub}
-              aria-label="Sign in with GitHub in the browser"
-              title={
-                oauthConfigured
-                  ? 'Sign in with GitHub in the browser'
-                  : 'Use “Sign in with credential” in the card below'
-              }
-            >
-              <Github size={18} strokeWidth={2} aria-hidden />
-            </button>
+            <div className="workspace-header-actions">
+              <button
+                type="button"
+                className={`scanner-header-github${oauthConfigured ? ' scanner-header-github--active' : ''}`}
+                onClick={connectGithub}
+                aria-label="Sign in with GitHub in the browser"
+                title={
+                  oauthConfigured
+                    ? 'Sign in with GitHub in the browser'
+                    : 'Use “Sign in with credential” in the card below'
+                }
+              >
+                <Github size={18} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
           </header>
 
           {error && (
@@ -423,20 +481,30 @@ export function ScannerPage() {
                   </details>
                 )}
               </div>
-              <div className="card-actions scanner-actions">
+              <div className="card-actions scanner-actions scanner-actions--wrap">
                 <button type="button" className="btn btn-secondary" onClick={loadOrgs} disabled={!!loading}>
                   {loading === 'orgs' ? <Loader2 size={16} className="spinner" /> : <Github size={16} />}
                   Load my organizations
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={loadMyUserRepos}
+                  disabled={!!loading || (!sessionLogin && !token.trim())}
+                  title="Repos you own (personal account), including private ones"
+                >
+                  {loading === 'user_repos' ? <Loader2 size={16} className="spinner" /> : <Github size={16} />}
+                  Load my repositories
+                </button>
               </div>
               <div className="input-group">
-                <label htmlFor="scanner-org">Organization</label>
+                <label htmlFor="scanner-org">Organization or username</label>
                 <input
                   id="scanner-org"
                   name="organization"
                   value={org}
                   onChange={(e) => setOrg(e.target.value)}
-                  placeholder="my-org"
+                  placeholder="my-org or your-github-username"
                   list={orgs.length > 0 ? 'scanner-org-suggestions' : undefined}
                   autoComplete="off"
                 />
@@ -449,8 +517,8 @@ export function ScannerPage() {
                 )}
                 <span className="scanner-hint">
                   {orgs.length > 0
-                    ? 'Choose from suggestions or type an org login you can access.'
-                    : 'Load organizations first for suggestions, or enter the org login manually.'}
+                    ? 'Org from the list, or type your GitHub username to scan personal repos.'
+                    : 'No org? Click “Load my repositories” after sign-in, or type your GitHub username and load repos.'}
                 </span>
               </div>
             </div>
@@ -471,7 +539,7 @@ export function ScannerPage() {
                     if (e.target.checked) setSelectedNames(new Set())
                   }}
                 />
-                Scan all repositories in this org (may take a long time)
+                Scan all repositories for this org or user (may take a long time)
               </label>
               <div className="scanner-actions">
                 <button type="button" className="btn btn-secondary" onClick={loadRepos} disabled={!!loading || !org.trim()}>
@@ -579,6 +647,16 @@ export function ScannerPage() {
                   <strong>{run?.counts?.findings_unknown ?? 0}</strong>
                 </div>
               </div>
+              {run?.status === 'failed' && run.errors && run.errors.length > 0 && (
+                <div className="scanner-run-errors" role="alert">
+                  <strong>Scan failed</strong>
+                  {run.errors.map((err, i) => (
+                    <p key={i} className="scanner-run-error-msg">
+                      {err.message}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
 

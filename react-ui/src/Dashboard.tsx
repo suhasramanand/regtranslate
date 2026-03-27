@@ -30,6 +30,7 @@ import {
   PanelRightClose,
   Settings,
   Trash2,
+  ScanLine,
 } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
@@ -53,6 +54,7 @@ import {
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
+import { dashboardPath } from './dashboardPaths'
 import './App.css'
 
 const REGULATION_OPTIONS = ['HIPAA', 'GDPR', 'ADA/WCAG', 'FDA 21 CFR Part 11', 'Custom']
@@ -173,13 +175,26 @@ export function Dashboard() {
   const [taskFilterPriority, setTaskFilterPriority] = useState<string>('')
   const [taskFilterConfidence, setTaskFilterConfidence] = useState<string>('')
   const { theme, toggleTheme } = useTheme()
-  const [page, setPage] = useState<'main' | 'history' | 'audit' | 'settings'>('main')
+  const [page, setPage] = useState<'main' | 'history' | 'audit' | 'settings'>(() => {
+    if (typeof window === 'undefined') return 'main'
+    const v = new URLSearchParams(window.location.search).get('view')
+    if (v === 'history' || v === 'audit' || v === 'settings') return v
+    return 'main'
+  })
   const [auditEntries, setAuditEntries] = useState<Array<{ timestamp: string; user_id: string; action: string; resource_accessed: string; source_ip: string; details: string }>>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [coverage, setCoverage] = useState<{ chunk_count: number; pages_summary: string; sections: string[]; section_4_in_chunks: boolean } | null>(null)
   const [qaQuestion, setQaQuestion] = useState('')
-  const [qaMessages, setQaMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; sources?: Array<{ text: string; page: string | number; section: string }> }>>([])
+  const [qaUseAgent, setQaUseAgent] = useState(false)
+  const [qaMessages, setQaMessages] = useState<
+    Array<{
+      role: 'user' | 'assistant'
+      content: string
+      sources?: Array<{ text: string; page: string | number; section: string }>
+      agent_steps?: Array<{ step: number; tool: string; detail: string; ts?: number }>
+    }>
+  >([])
   const [qaLoading, setQaLoading] = useState(false)
   const [toolsExpanded, setToolsExpanded] = useState(false)
   const [qaPanelOpen, setQaPanelOpen] = useState(false)
@@ -198,6 +213,7 @@ export function Dashboard() {
 
   const [searchParams] = useSearchParams()
   const isDemoMode = searchParams.get('demo') === '1'
+  const viewParam = searchParams.get('view')
   const [demoMessage, setDemoMessage] = useState<{ title: string; body: string } | null>(null)
   const [demoZoom, setDemoZoom] = useState<'normal' | 'zoom-in' | 'zoom-focus'>('zoom-in')
   const demoAutoPlayRef = useRef<boolean>(false)
@@ -338,7 +354,7 @@ export function Dashboard() {
       loadAudit()
       setSuccess('All data cleared. Start fresh by uploading a document.')
       setRegulationVersions([])
-      setPage('main')
+      navigate(dashboardPath({ demo: isDemoMode }), { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to clear data')
     } finally {
@@ -346,7 +362,7 @@ export function Dashboard() {
     }
   }
 
-  const loadHistory = () => {
+  const loadHistory = useCallback(() => {
     if (isDemoMode) {
       setHistoryEntries([])
       return
@@ -356,9 +372,9 @@ export function Dashboard() {
       .then(({ entries }) => setHistoryEntries(entries))
       .catch(() => setHistoryEntries([]))
       .finally(() => setHistoryLoading(false))
-  }
+  }, [isDemoMode])
 
-  const loadAudit = () => {
+  const loadAudit = useCallback(() => {
     if (isDemoMode) {
       setAuditEntries([])
       return
@@ -368,7 +384,22 @@ export function Dashboard() {
       .then(({ entries }) => setAuditEntries(entries))
       .catch(() => setAuditEntries([]))
       .finally(() => setAuditLoading(false))
-  }
+  }, [isDemoMode])
+
+  useEffect(() => {
+    if (viewParam === 'history') {
+      setPage('history')
+      loadHistory()
+    } else if (viewParam === 'audit') {
+      setPage('audit')
+      loadAudit()
+    } else if (viewParam === 'settings') {
+      setPage('settings')
+      if (isDemoMode) setDemoMessage(DEMO_MESSAGES.settings)
+    } else {
+      setPage('main')
+    }
+  }, [viewParam, isDemoMode, loadHistory, loadAudit])
 
   const loadRegulationVersions = () => {
     if (isDemoMode) {
@@ -417,8 +448,16 @@ export function Dashboard() {
       })),
     }
     try {
-      const res = await qaAsk(docId, question, screenContext)
-      setQaMessages((prev) => [...prev, { role: 'assistant', content: res.answer, sources: res.sources }])
+      const res = await qaAsk(docId, question, screenContext, { useAgent: qaUseAgent })
+      setQaMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: res.answer,
+          sources: res.sources,
+          ...(res.agent_steps && res.agent_steps.length > 0 ? { agent_steps: res.agent_steps } : {}),
+        },
+      ])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Q&A failed')
     } finally {
@@ -876,7 +915,7 @@ export function Dashboard() {
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <Link to="/dashboard" title="RegTranslate">
+          <Link to={dashboardPath({ demo: isDemoMode })} title="RegTranslate">
             <FileText size={24} strokeWidth={2} />
           </Link>
           <button
@@ -889,46 +928,66 @@ export function Dashboard() {
         </div>
         <nav className="sidebar-nav">
           <Tooltip content="PDF → Jira / GitHub" side="right">
-            <a
-              href="#"
+            <Link
+              to={dashboardPath({ demo: isDemoMode })}
               className={page === 'main' ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('main'); setSidebarOpen(false); }}
+              title="PDF workflow"
+              onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setSidebarOpen(false) }}
             >
               <FileCode size={20} />
-            </a>
+            </Link>
+          </Tooltip>
+          <Tooltip content="Compliance Scanner" side="right">
+            <Link
+              to="/scanner/app"
+              title="Compliance Scanner"
+              onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setSidebarOpen(false) }}
+            >
+              <ScanLine size={20} />
+            </Link>
           </Tooltip>
           <Tooltip content="History" side="right">
-            <a
-              href="#"
+            <Link
+              to={dashboardPath({ demo: isDemoMode, view: 'history' })}
               className={page === 'history' ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('history'); loadHistory(); setSidebarOpen(false); }}
+              title="Export history"
+              onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setSidebarOpen(false) }}
             >
               <History size={20} />
-            </a>
+            </Link>
           </Tooltip>
           <Tooltip content="Audit trail" side="right">
-            <a
-              href="#"
+            <Link
+              to={dashboardPath({ demo: isDemoMode, view: 'audit' })}
               className={page === 'audit' ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('audit'); loadAudit(); setSidebarOpen(false); }}
+              title="Audit trail"
+              onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setSidebarOpen(false) }}
             >
               <ShieldCheck size={20} />
-            </a>
+            </Link>
           </Tooltip>
           <Tooltip content="Settings" side="right">
-            <a
-              href="#"
+            <Link
+              to={dashboardPath({ demo: isDemoMode, view: 'settings' })}
               className={page === 'settings' ? 'active' : ''}
-              onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('settings'); setSidebarOpen(false); if (isDemoMode) setDemoMessage(DEMO_MESSAGES.settings); }}
+              title="Settings"
+              onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setSidebarOpen(false) }}
             >
               <Settings size={20} />
-            </a>
+            </Link>
           </Tooltip>
           {docId && (
             <Tooltip content="Q&A" side="right">
               <a
-                href="#"
-                onClick={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); setPage('main'); setSidebarOpen(false); setQaPanelOpen(true); }}
+                href={dashboardPath({ demo: isDemoMode })}
+                className={qaPanelOpen ? 'active' : ''}
+                onClick={(e) => {
+                  e.preventDefault()
+                  ;(e.currentTarget as HTMLElement).blur()
+                  navigate(dashboardPath({ demo: isDemoMode }))
+                  setSidebarOpen(false)
+                  setQaPanelOpen(true)
+                }}
               >
                 <MessageCircle size={20} />
               </a>
@@ -1002,19 +1061,81 @@ export function Dashboard() {
           {isDemoMode && (
             <div className="demo-public-banner" role="note">
               <span>Guided preview — no sign-in required.</span>
-              <Link to="/login" className="demo-public-banner-link">
-                Sign in for full access
-              </Link>
+              <span className="demo-public-banner-actions">
+                <Link to="/signup" className="demo-public-banner-link">
+                  Create access
+                </Link>
+                <span className="demo-public-banner-sep" aria-hidden>
+                  ·
+                </span>
+                <Link to="/login" className="demo-public-banner-link">
+                  Sign in
+                </Link>
+              </span>
             </div>
           )}
+          <header className="workspace-header">
+            <div className="workspace-header-main">
+              <span className="workspace-eyebrow">
+                {page === 'main'
+                  ? 'Pipeline'
+                  : page === 'history'
+                    ? 'History'
+                    : page === 'audit'
+                      ? 'Audit'
+                      : 'Settings'}
+              </span>
+              <h1>
+                {page === 'main'
+                  ? 'RegTranslate'
+                  : page === 'history'
+                    ? 'Export history'
+                    : page === 'audit'
+                      ? 'Audit trail'
+                      : 'Settings'}
+              </h1>
+              <p>
+                {page === 'main'
+                  ? 'Upload a regulation PDF, extract tasks with context, then export to Jira or GitHub.'
+                  : page === 'history'
+                    ? 'Jira tickets and GitHub issues you created from tasks in this workspace.'
+                    : page === 'audit'
+                      ? 'Tamper-evident log of access and actions (audit policy 2.2.1).'
+                      : 'GitHub session, Jira and GitHub defaults, and clearing local workspace data.'}
+              </p>
+            </div>
+            <div className="workspace-header-actions">
+              {page === 'main' && docId && (
+                <Tooltip content={qaPanelOpen ? 'Close Q&A panel' : 'Open Q&A panel'}>
+                  <button
+                    type="button"
+                    className={`btn ${qaPanelOpen ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setQaPanelOpen(!qaPanelOpen)}
+                    aria-expanded={qaPanelOpen}
+                  >
+                    <MessageCircle size={18} />
+                    Q&amp;A
+                  </button>
+                </Tooltip>
+              )}
+              {page === 'audit' && (
+                <button className="btn btn-secondary" type="button" onClick={() => loadAudit()} disabled={auditLoading}>
+                  {auditLoading ? <Loader2 size={16} className="spinner" /> : <ShieldCheck size={16} />}
+                  Refresh
+                </button>
+              )}
+              {page === 'history' && (
+                <button className="btn btn-secondary" type="button" onClick={() => loadHistory()} disabled={historyLoading}>
+                  {historyLoading ? <Loader2 size={16} className="spinner" /> : <History size={16} />}
+                  Refresh
+                </button>
+              )}
+            </div>
+          </header>
           {page === 'audit' ? (
-            <AuditPage entries={auditEntries} loading={auditLoading} onRefresh={loadAudit} />
+            <AuditPage entries={auditEntries} />
           ) : page === 'history' ? (
-            <HistoryPage
-              entries={historyEntries}
-              loading={historyLoading}
-              onRefresh={loadHistory}
-            />
+            <HistoryPage entries={historyEntries} />
           ) : page === 'settings' ? (
             <SettingsPage
               onResetAll={() => setShowClearConfirm(true)}
@@ -1046,37 +1167,41 @@ export function Dashboard() {
               <p className="demo-message-body">{demoMessage.body}</p>
             </div>
           )}
-          <header className="main-header main-header-split">
-            <div>
-              <h1>RegTranslate</h1>
-              <p>Regulatory PDF → Developer tasks → Jira / GitHub</p>
-            </div>
-            {docId && page === 'main' && (
-              <Tooltip content={qaPanelOpen ? 'Close Q&A panel' : 'Open Q&A panel'}>
-                <button
-                  type="button"
-                  className={`btn ${qaPanelOpen ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setQaPanelOpen(!qaPanelOpen)}
-                  aria-expanded={qaPanelOpen}
-                >
-                  <MessageCircle size={18} />
-                  Q&A
-                </button>
-              </Tooltip>
-            )}
-          </header>
+          {page === 'main' && (
+            <nav className="workflow-rail" aria-label="Workflow steps">
+              <span className={`workflow-rail-step${docIds.length > 0 ? ' done' : ' current'}`}>
+                1 · Upload
+              </span>
+              <span className="workflow-rail-join" aria-hidden />
+              <span
+                className={`workflow-rail-step${
+                  tasks.length > 0 ? ' done' : docIds.length > 0 ? ' current' : ''
+                }`}
+              >
+                2 · Extract
+              </span>
+              <span className="workflow-rail-join" aria-hidden />
+              <span className={`workflow-rail-step${tasks.length > 0 ? ' current' : ''}`}>
+                3 · Review &amp; export
+              </span>
+            </nav>
+          )}
 
-          {!tasks.length && (
-          <p className="pipeline-hint">
-            Process a document, then run <strong>Extract tasks</strong>.
-          </p>
-        )}
+          {!tasks.length && page === 'main' && (
+            <p className="pipeline-hint">
+              <strong>Next:</strong> choose a regulation, add your PDF, and run <strong>Process</strong>. Then run{' '}
+              <strong>Extract tasks</strong> to generate work items you can send to Jira or GitHub.
+            </p>
+          )}
 
         <div className="pipeline-row">
             <section className="step">
               <div className="step-header compact">
                 <span className="step-number">1</span>
-                <h2 className="step-title">Upload</h2>
+                <div>
+                  <h2 className="step-title">Upload</h2>
+                  <p className="step-desc">Pick your framework and add one or more PDFs.</p>
+                </div>
               </div>
               <div className="card">
                 <div className="input-group">
@@ -1163,7 +1288,10 @@ export function Dashboard() {
             <section className="step">
               <div className="step-header compact">
                 <span className="step-number">2</span>
-                <h2 className="step-title">Extract</h2>
+                <div>
+                  <h2 className="step-title">Extract</h2>
+                  <p className="step-desc">Optional product context helps the model stay on-topic.</p>
+                </div>
               </div>
               <div className="card">
                 <Tooltip content="Merge duplicate tasks across documents and regulations">
@@ -1531,7 +1659,21 @@ export function Dashboard() {
               </Tooltip>
             </div>
             <div className="qa-panel-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>Ask about the regulation or the current workspace (tasks, coverage, exports).</p>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Ask about the regulation or the current workspace (tasks, coverage, exports).</p>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-secondary)',
+                  marginBottom: 'var(--space-3)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input type="checkbox" checked={qaUseAgent} onChange={(e) => setQaUseAgent(e.target.checked)} disabled={qaLoading} />
+                Multi-step Q&amp;A (retrieval tools + Groq; uses GROQ_API_KEY on the server)
+              </label>
               <div className="qa-chat-messages">
                 {qaMessages.map((msg, i) => (
                   <div key={i} className={`qa-chat-bubble qa-chat-bubble-${msg.role}`}>
@@ -1544,6 +1686,21 @@ export function Dashboard() {
                         </div>
                         {msg.sources && msg.sources.length > 0 && (
                           <p className="qa-chat-sources">Sources: {msg.sources.length} chunk(s)</p>
+                        )}
+                        {msg.agent_steps && msg.agent_steps.length > 0 && (
+                          <details className="qa-agent-steps" style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)' }}>
+                            <summary style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+                              Agent steps ({msg.agent_steps.length})
+                            </summary>
+                            <ol style={{ margin: 'var(--space-2) 0 0', paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
+                              {msg.agent_steps.map((s) => (
+                                <li key={s.step}>
+                                  <strong>{s.tool}</strong>
+                                  {s.detail ? ` — ${s.detail}` : ''}
+                                </li>
+                              ))}
+                            </ol>
+                          </details>
                         )}
                       </>
                     )}
@@ -1608,32 +1765,26 @@ function SettingsPage({
 }) {
   return (
     <>
-      <header className="main-header">
-        <div>
-          <h1>Settings</h1>
-          <p>Connections and workspace</p>
-        </div>
-      </header>
       <div className="settings-cards">
-        <div className="card" style={{ maxWidth: 520 }}>
-          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
-            <ShieldCheck size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+        <div className="card">
+          <h3 className="settings-card-title">
+            <ShieldCheck size={18} aria-hidden />
             Account
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
+          <p className="settings-card-desc">
             Signing out ends your GitHub session for Compliance Scanner. Sign in again anytime to continue.
           </p>
           <button type="button" className="btn btn-secondary" onClick={() => onSignOut()}>
             Sign out
           </button>
         </div>
-        <div className="card" style={{ maxWidth: 520 }}>
-          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
-            <FileCode size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+        <div className="card">
+          <h3 className="settings-card-title">
+            <FileCode size={18} aria-hidden />
             Jira
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
-            Configure once; use project/board on the main Export section.
+          <p className="settings-card-desc">
+            Configure once; use project and board on the main export section.
           </p>
           <div className="input-group">
             <Tooltip content="Your Atlassian Jira instance URL">
@@ -1654,13 +1805,13 @@ function SettingsPage({
             <input id="settings-jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
           </div>
         </div>
-        <div className="card" style={{ maxWidth: 520 }}>
-          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
-            <Github size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+        <div className="card">
+          <h3 className="settings-card-title">
+            <Github size={18} aria-hidden />
             GitHub
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
-            Repository and GitHub credential for creating issues from Export.
+          <p className="settings-card-desc">
+            Repository and credential for creating issues from export.
           </p>
           <div className="input-group">
             <Tooltip content="Repository as owner/name (e.g. owner/repo)">
@@ -1675,10 +1826,10 @@ function SettingsPage({
             <input id="settings-gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
           </div>
         </div>
-        <div className="card" style={{ maxWidth: 480 }}>
-          <h3 style={{ margin: '0 0 var(--space-2)', fontSize: 'var(--text-base)' }}>Clear all data</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-5)', lineHeight: 1.5 }}>
-            Remove all documents, tasks, audit logs, export history, regulation versions, and calibration data. Use this to start completely fresh.
+        <div className="card">
+          <h3 className="settings-card-title">Clear all data</h3>
+          <p className="settings-card-desc">
+            Removes documents, tasks, audit logs, export history, regulation versions, and calibration data. You can&apos;t undo this.
           </p>
           <button
             type="button"
@@ -1698,12 +1849,8 @@ function SettingsPage({
 
 function AuditPage({
   entries,
-  loading,
-  onRefresh,
 }: {
   entries: Array<{ timestamp: string; user_id: string; action: string; resource_accessed: string; source_ip: string; details: string }>
-  loading: boolean
-  onRefresh: () => void
 }) {
   const formatDate = (ts: string) => {
     try {
@@ -1714,16 +1861,6 @@ function AuditPage({
   }
   return (
     <>
-      <header className="main-header main-header-split">
-        <div>
-          <h1>Audit trail</h1>
-          <p>Tamper-evident log of access and actions (§ 2.2.1)</p>
-        </div>
-        <button className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 size={16} className="spinner" /> : <ShieldCheck size={16} />}
-          Refresh
-        </button>
-      </header>
       {entries.length === 0 ? (
         <div className="card">
           <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No audit entries yet.</p>
@@ -1751,12 +1888,8 @@ function AuditPage({
 
 function HistoryPage({
   entries,
-  loading,
-  onRefresh,
 }: {
   entries: Array<{ timestamp: string; target: string; project_key?: string; repo?: string; keys?: string[]; urls?: string[]; task_count: number; jira_url?: string }>
-  loading: boolean
-  onRefresh: () => void
 }) {
   const formatDate = (ts: string) => {
     try {
@@ -1769,16 +1902,6 @@ function HistoryPage({
 
   return (
     <>
-      <header className="main-header main-header-split">
-        <div>
-          <h1>Export history</h1>
-          <p>History of created Jira tickets and GitHub issues</p>
-        </div>
-        <button className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 size={16} className="spinner" /> : <History size={16} />}
-          Refresh
-        </button>
-      </header>
       {entries.length === 0 ? (
         <div className="card">
           <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No export history yet. Create Jira tickets or GitHub issues to see them here.</p>

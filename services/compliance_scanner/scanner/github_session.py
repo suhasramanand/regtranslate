@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import Request, Response
+from github.GithubException import GithubException
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from pydantic import BaseModel
@@ -16,6 +17,24 @@ COOKIE_NAME = "scanner_github_token"
 PENDING_COOKIE = "gh_oauth_pending"
 STATE_MAX_AGE = 600
 TOKEN_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _ssl_ca_bundle() -> str | None:
+    """CA file for TLS to GitHub. macOS python.org builds often lack system certs; certifi fixes SSL verify."""
+    try:
+        import certifi
+    except ImportError:
+        return None
+    return certifi.where()
+
+
+def _github_client(token: str):
+    from github import Github
+
+    ca = _ssl_ca_bundle()
+    if ca:
+        return Github(token, verify=ca)
+    return Github(token)
 
 
 def _secret() -> str:
@@ -120,6 +139,7 @@ def clear_github_token_cookie(response: Response) -> None:
 
 def exchange_code_for_token(code: str) -> str:
     import json
+    import ssl
     import urllib.error
     import urllib.parse
     import urllib.request
@@ -143,11 +163,22 @@ def exchange_code_for_token(code: str) -> str:
         headers={"Accept": "application/json"},
         method="POST",
     )
+    ca = _ssl_ca_bundle()
+    context = ssl.create_default_context(cafile=ca) if ca else None
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        open_kw = {"timeout": 30}
+        if context is not None:
+            open_kw["context"] = context
+        with urllib.request.urlopen(req, **open_kw) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         raise ValueError(f"GitHub OAuth token exchange failed: {e}") from e
+    except urllib.error.URLError as e:
+        raise ValueError(
+            "GitHub OAuth could not reach GitHub over HTTPS. "
+            "If you are on macOS with python.org Python, install certificates "
+            "(Install Certificates.command) or ensure `certifi` is installed."
+        ) from e
 
     token = data.get("access_token")
     if not token:
@@ -162,27 +193,51 @@ class GitHubUserBrief(BaseModel):
 
 
 def github_user_login(token: str) -> GitHubUserBrief:
-    from github import Github
-
-    g = Github(token)
+    g = _github_client(token)
     u = g.get_user()
     return GitHubUserBrief(login=u.login, avatar_url=getattr(u, "avatar_url", None))
 
 
 def list_user_orgs(token: str) -> list[str]:
-    from github import Github
-
-    g = Github(token)
+    g = _github_client(token)
     return sorted({o.login for o in g.get_user().get_orgs()})
 
 
-def list_org_repos_brief(token: str, org: str, *, limit: int = 200) -> list[dict[str, Any]]:
-    from github import Github
-
-    g = Github(token)
-    org_obj = g.get_organization(org)
+def list_authenticated_user_repos_brief(token: str, *, limit: int = 200) -> tuple[str, list[dict[str, Any]]]:
+    """Repos owned by the authenticated user (includes private). Returns (login, brief rows)."""
+    g = _github_client(token)
+    me = g.get_user()
+    login = me.login
     out: list[dict[str, Any]] = []
-    for r in org_obj.get_repos():
+    for r in me.get_repos():
+        out.append(
+            {
+                "full_name": r.full_name,
+                "default_branch": r.default_branch or "main",
+                "private": r.private,
+                "description": (r.description or "")[:200],
+            }
+        )
+        if len(out) >= limit:
+            break
+    out.sort(key=lambda x: x["full_name"].lower())
+    return login, out
+
+
+def list_org_repos_brief(token: str, org: str, *, limit: int = 200) -> list[dict[str, Any]]:
+    """List repos for a GitHub org, or for a user login (public repos), or all repos for the authenticated user when org matches their login."""
+    g = _github_client(token)
+    org = org.strip()
+    me = g.get_user()
+    if me.login.lower() == org.lower():
+        repo_iter = me.get_repos()
+    else:
+        try:
+            repo_iter = g.get_organization(org).get_repos()
+        except GithubException:
+            repo_iter = g.get_user(org).get_repos()
+    out: list[dict[str, Any]] = []
+    for r in repo_iter:
         out.append(
             {
                 "full_name": r.full_name,

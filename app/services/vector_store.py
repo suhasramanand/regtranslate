@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from app.config import CHROMA_PERSIST_DIR
+from app.config import CHROMA_CODE_PERSIST_DIR, CHROMA_PERSIST_DIR
 
 
 def _chroma_client():
-    """Chroma client with persistent storage (lazy init)."""
+    """Chroma client for regulation / document chunks (lazy init)."""
     import chromadb
     from chromadb.config import Settings
 
@@ -18,7 +19,19 @@ def _chroma_client():
     )
 
 
+def _chroma_code_client():
+    """Chroma client for compliance scanner code chunks (separate SQLite schema on disk)."""
+    import chromadb
+    from chromadb.config import Settings
+
+    return chromadb.PersistentClient(
+        path=str(CHROMA_CODE_PERSIST_DIR),
+        settings=Settings(anonymized_telemetry=False),
+    )
+
+
 _client = None
+_code_client = None
 
 
 def _get_client():
@@ -28,10 +41,18 @@ def _get_client():
     return _client
 
 
+def _get_code_client():
+    global _code_client
+    if _code_client is None:
+        _code_client = _chroma_code_client()
+    return _code_client
+
+
 def reset_client() -> None:
-    """Clear the cached ChromaDB client. Call after resetting chroma_db directory."""
-    global _client
+    """Clear cached ChromaDB clients. Call after resetting persist directories."""
+    global _client, _code_client
     _client = None
+    _code_client = None
 
 
 def _collection_name(doc_id: str) -> str:
@@ -41,11 +62,13 @@ def _collection_name(doc_id: str) -> str:
 
 def _code_collection_name(key: str) -> str:
     """
-    Sanitize a code collection key for use as Chroma collection name.
+    Map a logical code key (e.g. \"owner/repo@sha\") to a Chroma collection name.
 
-    Suggested key shape: "{org}/{repo}@{sha}" or "{repo_full_name}@{sha}".
+    Chroma requires names of 3-63 characters, [A-Za-z0-9_-], start/end alphanumeric.
+    Long keys must be hashed so repo@commit identifiers stay stable but fit the limit.
     """
-    return "rt_code_" + "".join(c if c.isalnum() or c in "-_" else "_" for c in key)
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+    return f"rtc{digest}"
 
 
 def add_document(
@@ -95,7 +118,7 @@ def add_codebase(
     metadata: shared fields, e.g. org, repo_full_name, commit_sha, scan_run_id
     Returns the created collection name.
     """
-    client = _get_client()
+    client = _get_code_client()
     name = _code_collection_name(key)
     try:
         coll = client.get_collection(name=name)
@@ -133,7 +156,7 @@ def query_codebase(
     """
     Query a code collection by key. Returns list of {text, metadata}.
     """
-    client = _get_client()
+    client = _get_code_client()
     name = _code_collection_name(key)
     try:
         coll = client.get_collection(name=name)

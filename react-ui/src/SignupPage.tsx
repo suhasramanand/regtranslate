@@ -13,7 +13,22 @@ import { useTheme } from './useTheme'
 import './App.css'
 import './LoginPage.css'
 
-export function LoginPage() {
+const SIGNUP_STEPS = [
+  {
+    title: 'Connect GitHub',
+    body: 'We use GitHub to identify you and (when you use the scanner) read your repositories with the access you grant.',
+  },
+  {
+    title: 'Workspace opens',
+    body: 'The first time you connect, we prepare your workspace automatically. Returning users pick up where they left off.',
+  },
+  {
+    title: 'Start working',
+    body: 'Land on the dashboard, run scans, or explore the guided demo anytime without signing in.',
+  },
+] as const
+
+export function SignupPage() {
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
@@ -59,7 +74,7 @@ export function LoginPage() {
   const connectGithub = () => {
     if (!oauthConfigured) {
       setError(
-        'One-click GitHub sign-in isn’t available here. Use “Sign in with credential” below, or ask your administrator to enable browser sign-in.',
+        'One-click GitHub isn’t available on this deployment. Use “Connect with credential” below, or ask your administrator to enable browser sign-in.',
       )
       return
     }
@@ -68,7 +83,7 @@ export function LoginPage() {
     window.location.href = `${SCANNER_API_BASE}/auth/github/login?next=` + encodeURIComponent(next)
   }
 
-  const signInWithToken = async () => {
+  const connectWithToken = async () => {
     const t = token.trim()
     if (!t) {
       setError('Enter your GitHub credential.')
@@ -82,7 +97,7 @@ export function LoginPage() {
       setToken('')
       navigate(fromPath, { replace: true })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sign-in failed')
+      setError(e instanceof Error ? e.message : 'Connection failed')
     } finally {
       setLoading(false)
     }
@@ -103,7 +118,7 @@ export function LoginPage() {
       <div className="app-auth-wait" role="status" aria-live="polite">
         <div className="app-auth-wait-card" aria-busy="true">
           <Loader2 size={36} className="spinner" strokeWidth={2} />
-          <p className="app-auth-wait-text">Checking sign-in…</p>
+          <p className="app-auth-wait-text">Checking your account…</p>
         </div>
       </div>
     )
@@ -120,15 +135,15 @@ export function LoginPage() {
               </span>
               <span>RegTranslate</span>
             </Link>
-            <nav className="login-page-nav" aria-label="Sign in shortcuts">
+            <nav className="login-page-nav" aria-label="Account shortcuts">
               <Link to="/" className="login-page-nav-link">
                 Home
               </Link>
               <Link to="/scanner" className="login-page-nav-link">
                 Compliance
               </Link>
-              <Link to="/signup" className="login-page-nav-link">
-                Sign up
+              <Link to="/login" className="login-page-nav-link">
+                Sign in
               </Link>
             </nav>
           </div>
@@ -137,11 +152,11 @@ export function LoginPage() {
               type="button"
               className={`login-header-icon-btn${oauthConfigured ? ' login-header-icon-btn--primary' : ''}`}
               onClick={connectGithub}
-              aria-label="Sign in with GitHub in the browser"
+              aria-label="Continue with GitHub in the browser"
               title={
                 oauthConfigured
-                  ? 'Sign in with GitHub in the browser'
-                  : 'Use “Sign in with credential” below'
+                  ? 'Continue with GitHub in the browser'
+                  : 'Use “Connect with credential” in the form'
               }
             >
               <Github size={20} strokeWidth={2} aria-hidden />
@@ -159,13 +174,27 @@ export function LoginPage() {
       </header>
 
       <main className="login-page-main">
-        <div className="login-panel">
-          <p className="login-page-eyebrow">Secure access</p>
-          <h1 className="login-page-title">Sign in to continue</h1>
+        <div className="login-panel login-panel--signup">
+          <p className="login-page-eyebrow">New workspace</p>
+          <h1 className="login-page-title">Create your RegTranslate access</h1>
           <p className="login-page-lead">
-            Use the <strong>GitHub</strong> icon in the header when one-click sign-in is enabled, or paste a GitHub
-            credential below to continue.
+            There isn’t a separate “register” form: <strong>your first GitHub sign-in creates your access</strong>. Use
+            the same steps when you come back — we never ask you to pick “sign up” vs “sign in” at GitHub.
           </p>
+
+          <ol className="login-signup-steps" aria-label="How access works">
+            {SIGNUP_STEPS.map((step, i) => (
+              <li key={step.title} className="login-signup-step">
+                <span className="login-signup-step-num" aria-hidden>
+                  {i + 1}
+                </span>
+                <div className="login-signup-step-body">
+                  <strong className="login-signup-step-title">{step.title}</strong>
+                  <span className="login-signup-step-text">{step.body}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
 
           {error && (
             <div className="alert alert-error login-alert">
@@ -174,18 +203,39 @@ export function LoginPage() {
             </div>
           )}
 
+          <div className="login-actions login-actions--signup-oauth">
+            <button
+              type="button"
+              className="btn btn-primary login-btn-full"
+              onClick={connectGithub}
+              disabled={!oauthConfigured}
+            >
+              <Github size={18} strokeWidth={2} aria-hidden />
+              Continue with GitHub
+            </button>
+            {!oauthConfigured && (
+              <p className="login-hint-muted login-hint-muted--tight">
+                Browser GitHub sign-in isn’t configured here. Use a credential below, or ask your admin to enable OAuth.
+              </p>
+            )}
+          </div>
+
+          <p className="login-auth-divider" role="separator">
+            Or connect with a credential
+          </p>
+
           <div className="input-group login-token-field">
-            <label htmlFor="login-pat">GitHub credential</label>
+            <label htmlFor="signup-pat">GitHub credential</label>
             <input
-              id="login-pat"
+              id="signup-pat"
               type="password"
               autoComplete="off"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') signInWithToken()
+                if (e.key === 'Enter') connectWithToken()
               }}
-              placeholder="Paste credential"
+              placeholder="Personal access token or fine-grained token"
             />
           </div>
 
@@ -193,20 +243,20 @@ export function LoginPage() {
             <button
               type="button"
               className="btn btn-primary login-btn-full"
-              onClick={() => signInWithToken()}
+              onClick={() => connectWithToken()}
               disabled={!!loading || !token.trim()}
             >
               {loading === 'pat' ? <Loader2 size={18} className="spinner" /> : <KeyRound size={18} />}
-              Sign in with credential
+              Connect with credential
             </button>
           </div>
 
           {!oauthConfigured && (
             <details className="login-details">
-              <summary>Can’t use GitHub in the browser?</summary>
+              <summary>Why isn’t the green GitHub button available?</summary>
               <p className="login-details-body">
-                Your team can enable one-click GitHub for RegTranslate Compliance. Until then, sign in with a GitHub
-                credential above.
+                One-click OAuth needs client ID and secret on the Compliance Scanner service. Self-hosted teams enable
+                that in their config; until then, paste a token with the scopes your administrator documents.
               </p>
             </details>
           )}
@@ -215,7 +265,7 @@ export function LoginPage() {
             <div className="login-session-row">
               <span className="scanner-session-pill">
                 <CheckCircle2 size={14} />
-                Signed in as <strong>{sessionLogin}</strong>
+                Connected as <strong>{sessionLogin}</strong>
               </span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={disconnect}>
                 <LogOut size={14} />
@@ -225,11 +275,12 @@ export function LoginPage() {
           )}
         </div>
       </main>
+
       <footer className="login-page-footer">
         <p className="login-page-footer-text">
-          New to RegTranslate?{' '}
-          <Link to="/signup" className="login-page-footer-link">
-            Create access
+          Already have access?{' '}
+          <Link to="/login" className="login-page-footer-link">
+            Sign in
           </Link>
           <span className="login-page-footer-sep" aria-hidden>
             ·

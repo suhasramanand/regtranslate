@@ -237,6 +237,97 @@
   min-height: 0;
 }
 
+.login-signup-steps {
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.login-signup-step {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.login-signup-step-num {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(45, 122, 101, 0.12);
+  border: 1px solid rgba(45, 122, 101, 0.2);
+}
+
+[data-theme='dark'] .login-signup-step-num {
+  background: rgba(92, 217, 168, 0.12);
+  border-color: rgba(92, 217, 168, 0.22);
+}
+
+.login-signup-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.login-signup-step-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.login-signup-step-text {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.login-actions--signup-oauth {
+  margin-bottom: 0;
+}
+
+.login-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0 var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.login-auth-divider::before,
+.login-auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.login-hint-muted--tight {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+}
+
+.login-page-footer-sep {
+  display: inline-block;
+  margin: 0 var(--space-2);
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
 .login-panel {
   width: 100%;
   max-width: 440px;
@@ -252,6 +343,10 @@
 
 [data-theme='dark'] .login-panel {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.login-panel.login-panel--signup {
+  max-width: 520px;
 }
 
 .login-page-eyebrow {

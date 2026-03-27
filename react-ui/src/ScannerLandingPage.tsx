@@ -39,7 +39,10 @@ export function ScannerLandingPage() {
             <Link to="/dashboard?demo=1" className="scanner-lp-nav-link">
               Demo
             </Link>
-            <Link to="/login?next=/scanner/app" className="scanner-lp-nav-link scanner-lp-nav-link--emphasis">
+            <Link to="/signup?next=/scanner/app" className="scanner-lp-nav-link scanner-lp-nav-link--emphasis">
+              Sign up
+            </Link>
+            <Link to="/login?next=/scanner/app" className="scanner-lp-nav-link">
               Sign in
             </Link>
           </nav>
@@ -72,9 +75,9 @@ export function ScannerLandingPage() {
                 place.
               </p>
               <div className="scanner-lp-cta-row">
-                <Link to="/login?next=/scanner/app" className="scanner-lp-cta scanner-lp-cta--primary">
+                <Link to="/signup?next=/scanner/app" className="scanner-lp-cta scanner-lp-cta--primary">
                   <Github size={18} strokeWidth={2} aria-hidden />
-                  Sign in to run scans
+                  Connect GitHub to start
                 </Link>
                 <Link to="/" className="scanner-lp-cta scanner-lp-cta--secondary">
                   Back to home
@@ -82,9 +85,9 @@ export function ScannerLandingPage() {
                 </Link>
               </div>
               <p className="scanner-lp-note">
-                Sign in with GitHub to connect your organization and start scanning.{' '}
+                New here? Connect GitHub once to start scanning.{' '}
                 <Link to="/login?next=/scanner/app" className="scanner-lp-inline-link">
-                  Continue to sign-in
+                  Already registered — sign in
                 </Link>
               </p>
             </div>
@@ -215,7 +218,7 @@ export function ScannerLandingPage() {
 
           <section className="scanner-lp-bottom-cta" aria-label="Get started">
             <p className="scanner-lp-bottom-cta-text">Ready to connect your org?</p>
-            <Link to="/login?next=/scanner/app" className="scanner-lp-cta scanner-lp-cta--primary">
+            <Link to="/signup?next=/scanner/app" className="scanner-lp-cta scanner-lp-cta--primary">
               Open Compliance Scanner
               <ArrowRight size={18} strokeWidth={2} aria-hidden />
             </Link>

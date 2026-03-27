@@ -525,12 +525,33 @@ class QARequest(BaseModel):
     doc_id: str
     question: str
     screen_context: dict | None = None  # tasks, coverage, regulation_name, etc.
+    use_agent: bool = False
+    max_agent_steps: int = 8
 
 
 @api.post("/qa")
 def qa_agent(req: QARequest):
     """Answer compliance questions using RAG + LLM. Also answers questions about the current screen state."""
+    from app.config import GROQ_API_KEY
     from app.services import qa_agent as qa_svc
+    from app.services import qa_agent_graph
+
+    if req.use_agent:
+        if not GROQ_API_KEY:
+            raise HTTPException(
+                503,
+                "Agentic Q&A requires GROQ_API_KEY. Disable multi-step mode or configure Groq.",
+            )
+        try:
+            cap = max(1, min(req.max_agent_steps, 20))
+            return qa_agent_graph.run_qa_agent(
+                req.doc_id,
+                req.question,
+                screen_context=req.screen_context,
+                max_agent_steps=cap,
+            )
+        except ValueError as e:
+            raise HTTPException(503, str(e)) from e
     result = qa_svc.answer_question(req.doc_id, req.question, screen_context=req.screen_context)
     return result
 

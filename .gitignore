@@ -5,6 +5,9 @@ __pycache__/
 .env.local
 .env.*.local
 chroma_db/
+chroma_scanner_code/
+services/scan_history/auth.sqlite
+services/scan_history/runs.json
 *.pdf
 .pytest_cache/
 .mypy_cache/

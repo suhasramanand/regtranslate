@@ -8,14 +8,18 @@ All notable changes to RegTranslate are documented here.
 - Compliance scanner service (FastAPI, Docker, controls catalog, SARIF and JSON findings export)
 - GitHub session authentication, session store, and CI workflow for repository scans
 - React scanner landing and scanner pages, dashboard routing, and auth gating (`RequireAuth`, `GithubSessionGate`)
+- Optional LangGraph-based Q&A agent path (dashboard toggle, mocked tests)
+- Signup page, auth redirect helper, and dashboard path utilities for scanner navigation
 - Marketing layout, footer, and PRD markdown (`docs/PRD.md`)
-- Scripts: compliance scanner dev helper, PRD PDF render helper
-- Tests for compliance scanner CLI and session store
+- Scripts: compliance scanner dev helper, PRD PDF render helper, pytest helper
+- Tests for compliance scanner CLI, session store, and QA agent
 
 ### Changed
+- Vector store: hashed code collection names; separate `CHROMA_CODE_PERSIST_DIR` for scanner code embeddings (avoids legacy `chroma_db` schema conflicts)
+- GitHub OAuth/session (SSL via certifi), user-owned repo listing for scanner
 - Vector store service and frontend API client updates for new flows
-- Hero page, dashboard, and global styles; favicon and demo recorder tweaks
-- Dependencies: Python requirements and React/Vite stack updates
+- Hero page, dashboard, login, and global styles; favicon and demo recorder tweaks
+- Dependencies: Python requirements (incl. `httpx` pin for TestClient) and React/Vite stack updates
 
 ### Removed
 - Standalone flow demo page (timeline/React Flow views) in favor of the scanner experience
