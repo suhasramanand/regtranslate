@@ -1,0 +1,90 @@
+[
+  {
+    "control_id": "RT-2.5.1-MFA",
+    "control_title": "Enforce MFA for privileged access",
+    "status": "compliant",
+    "confidence": 70,
+    "summary": "Lexical CI scan",
+    "gap_description": "",
+    "acceptance_criteria": [
+      "MFA is required for privileged/admin accounts at minimum.",
+      "MFA enrollment and challenge are enforced server-side (not only UI).",
+      "Backup/recovery codes or alternative secure recovery is documented."
+    ],
+    "evidence_links": [
+      {
+        "url": "file:///Users/suhasreddybr/Projects/regtranslate/.env",
+        "label": ".env:8"
+      }
+    ],
+    "evidence_snippets": [
+      {
+        "path": ".env",
+        "start_line": 8,
+        "end_line": 8,
+        "preview": "JIRA_API_TOKEN=ATATT3xFfGF0XYiqEwozg65HJgAcMEfa9iSYLSssvA_YV4HxU6RDTo9mePsmSz48Km_rN9rRyF4NrVqwFzrrfy2eZUahnRdlDH_SEtj99e3rPpBBY-ri1OqkZmdGABoyjBT9YdPKBSwA8wNPuzK8DUbueey9Knbwb38bJ5KOb6-63TMZYdgimAo=16598D18"
+      }
+    ],
+    "fingerprints": {
+      "primary": "56b94ec3f2614163783ff35a5d331dc7"
+    }
+  },
+  {
+    "control_id": "RT-2.1.4-ENCRYPTION",
+    "control_title": "Encrypt data at rest and in transit",
+    "status": "compliant",
+    "confidence": 70,
+    "summary": "Lexical CI scan",
+    "gap_description": "",
+    "acceptance_criteria": [
+      "All external traffic uses TLS with strong configuration.",
+      "Sensitive data stores use encryption at rest (KMS-managed keys where possible)."
+    ],
+    "evidence_links": [
+      {
+        "url": "file:///Users/suhasreddybr/Projects/regtranslate/LICENSE",
+        "label": "LICENSE:8"
+      }
+    ],
+    "evidence_snippets": [
+      {
+        "path": "LICENSE",
+        "start_line": 8,
+        "end_line": 8,
+        "preview": "styles, assets, and any other files contained herein (collectively, the \"Software\")."
+      }
+    ],
+    "fingerprints": {
+      "primary": "8cfaad678c9d4f98479bc1e2268c067d"
+    }
+  },
+  {
+    "control_id": "RT-2.2.1-AUDIT_LOGGING",
+    "control_title": "Tamper-evident audit logging with retention",
+    "status": "compliant",
+    "confidence": 70,
+    "summary": "Lexical CI scan",
+    "gap_description": "",
+    "acceptance_criteria": [
+      "Logs include timestamp, user_id, action, resource, source_ip.",
+      "Audit logs are tamper-evident and retained for required period."
+    ],
+    "evidence_links": [
+      {
+        "url": "file:///Users/suhasreddybr/Projects/regtranslate/requirements.txt",
+        "label": "requirements.txt:5"
+      }
+    ],
+    "evidence_snippets": [
+      {
+        "path": "requirements.txt",
+        "start_line": 5,
+        "end_line": 5,
+        "preview": "langchain>=0.1.0,<0.3"
+      }
+    ],
+    "fingerprints": {
+      "primary": "e2301905a3152d220325aea20ec9dc59"
+    }
+  }
+]

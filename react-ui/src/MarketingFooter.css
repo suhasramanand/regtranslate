@@ -1,0 +1,138 @@
+/* Marketing footer — uses global tokens so light/dark tracks [data-theme] on :root */
+
+.mkt-footer {
+  margin-top: auto;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.mkt-footer-inner {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-6) var(--space-8);
+}
+
+.mkt-footer-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-10);
+}
+
+@media (min-width: 768px) {
+  .mkt-footer-grid {
+    grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(0, 1fr));
+    gap: var(--space-8) var(--space-6);
+  }
+}
+
+@media (min-width: 1024px) {
+  .mkt-footer-grid {
+    gap: var(--space-10);
+  }
+}
+
+.mkt-footer-brand-block {
+  max-width: 20rem;
+}
+
+.mkt-footer-logo {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+  line-height: 1;
+  margin-bottom: var(--space-4);
+}
+
+.mkt-footer-logo-reg {
+  color: var(--text);
+}
+
+.mkt-footer-logo-translate {
+  color: var(--accent);
+}
+
+.mkt-footer-tagline {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.mkt-footer-col-title {
+  margin: 0 0 var(--space-4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.mkt-footer-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mkt-footer-links a {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.mkt-footer-links a:hover {
+  color: var(--text);
+}
+
+.mkt-footer-links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.mkt-footer-bottom {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  text-align: center;
+  transition: border-color var(--transition);
+}
+
+@media (min-width: 640px) {
+  .mkt-footer-bottom {
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: left;
+  }
+}
+
+.mkt-footer-copy {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.mkt-footer-aside {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+}

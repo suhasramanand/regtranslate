@@ -1,0 +1,52 @@
+name: Compliance scan
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run compliance scanner (CI mode)
+        run: |
+          python services/compliance_scanner/cli.py scan-ci \
+            --repo . \
+            --controls controls/catalog.yaml \
+            --out compliance-findings.json \
+            --sarif compliance.sarif.json \
+            --fail-on non_compliant
+
+      # Code scanning / SARIF upload requires GitHub Advanced Security on private repos.
+      # Do not fail the whole workflow if upload is unavailable; findings artifact still uploads.
+      - name: Upload SARIF
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: compliance.sarif.json
+
+      - name: Upload findings artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-findings
+          path: |
+            compliance-findings.json
+            compliance.sarif.json
+

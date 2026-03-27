@@ -2,6 +2,24 @@
 
 All notable changes to RegTranslate are documented here.
 
+## [Unreleased] - 2026-03-27
+
+### Added
+- Compliance scanner service (FastAPI, Docker, controls catalog, SARIF and JSON findings export)
+- GitHub session authentication, session store, and CI workflow for repository scans
+- React scanner landing and scanner pages, dashboard routing, and auth gating (`RequireAuth`, `GithubSessionGate`)
+- Marketing layout, footer, and PRD markdown (`docs/PRD.md`)
+- Scripts: compliance scanner dev helper, PRD PDF render helper
+- Tests for compliance scanner CLI and session store
+
+### Changed
+- Vector store service and frontend API client updates for new flows
+- Hero page, dashboard, and global styles; favicon and demo recorder tweaks
+- Dependencies: Python requirements and React/Vite stack updates
+
+### Removed
+- Standalone flow demo page (timeline/React Flow views) in favor of the scanner experience
+
 ## [1.0.0] - 2025-03-06
 
 ### Added

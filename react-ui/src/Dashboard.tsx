@@ -31,9 +31,25 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { processDocument, extractTasks, exportToJira, exportToGitHub, getExportConfig, getExportHistory, getAuditLogs, getRegulationVersions, qaAsk, gapAnalysis, submitCalibrationFeedback, checkRegulationContentChange, appendAuditLog, resetAllData } from './api'
+import {
+  processDocument,
+  extractTasks,
+  exportToJira,
+  exportToGitHub,
+  getExportConfig,
+  getExportHistory,
+  getAuditLogs,
+  getRegulationVersions,
+  qaAsk,
+  gapAnalysis,
+  submitCalibrationFeedback,
+  checkRegulationContentChange,
+  appendAuditLog,
+  resetAllData,
+  scannerGithubDisconnect,
+} from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
@@ -67,7 +83,7 @@ const DEMO_MESSAGES = {
   step5: { title: '5. Export to Jira ✓', body: 'One-click export with project, board, and sprint options.' },
   step6: { title: '6. Export to GitHub ✓', body: 'Create GitHub issues from selected tasks.' },
   qa: { title: 'Compliance Q&A ✓', body: 'Ask questions about the regulation. Conversation history preserved.' },
-  settings: { title: 'Settings', body: 'Configure API credentials. Clear data to start fresh.' },
+  settings: { title: 'Settings', body: 'Configure connections and defaults. Clear data to start fresh.' },
 } as const
 
 const DEMO_TASKS: ExtractionTask[] = [
@@ -123,6 +139,7 @@ interface ExportPreset {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate()
   const [docIds, setDocIds] = useState<string[]>([])
   const docId = docIds[0] ?? null
   const [regulationName, setRegulationName] = useState('Custom')
@@ -759,7 +776,7 @@ export function Dashboard() {
     }
     const toExport = tasks.filter((t) => selectedTasks.has(t.task_id))
     if (!toExport.length || !ghRepo || !ghToken) {
-      setError('Select at least one task and provide repo + token.')
+      setError('Select at least one task and provide a repository and GitHub credential.')
       return
     }
     clearMessages()
@@ -836,7 +853,7 @@ export function Dashboard() {
       )}
 
       <header className="mobile-header">
-        <Link to="/" className="mobile-header-brand">
+        <Link to="/dashboard" className="mobile-header-brand">
           <FileText size={22} strokeWidth={2} />
           RegTranslate
         </Link>
@@ -859,7 +876,7 @@ export function Dashboard() {
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <Link to="/" title="RegTranslate">
+          <Link to="/dashboard" title="RegTranslate">
             <FileText size={24} strokeWidth={2} />
           </Link>
           <button
@@ -982,6 +999,14 @@ export function Dashboard() {
       <main className={`main ${isDemoMode ? 'demo-main' : ''}`}>
         <div className={`demo-zoom-wrapper ${isDemoMode ? `demo-zoom-${demoZoom}` : ''}`}>
         <div className="main-inner">
+          {isDemoMode && (
+            <div className="demo-public-banner" role="note">
+              <span>Guided preview — no sign-in required.</span>
+              <Link to="/login" className="demo-public-banner-link">
+                Sign in for full access
+              </Link>
+            </div>
+          )}
           {page === 'audit' ? (
             <AuditPage entries={auditEntries} loading={auditLoading} onRefresh={loadAudit} />
           ) : page === 'history' ? (
@@ -993,6 +1018,14 @@ export function Dashboard() {
           ) : page === 'settings' ? (
             <SettingsPage
               onResetAll={() => setShowClearConfirm(true)}
+              onSignOut={async () => {
+                try {
+                  await scannerGithubDisconnect()
+                } catch {
+                  /* still leave app */
+                }
+                navigate(isDemoMode ? '/' : '/login', { replace: true })
+              }}
               loading={settingsResetLoading}
               jiraUrl={jiraUrl}
               setJiraUrl={setJiraUrl}
@@ -1013,7 +1046,7 @@ export function Dashboard() {
               <p className="demo-message-body">{demoMessage.body}</p>
             </div>
           )}
-          <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+          <header className="main-header main-header-split">
             <div>
               <h1>RegTranslate</h1>
               <p>Regulatory PDF → Developer tasks → Jira / GitHub</p>
@@ -1418,7 +1451,7 @@ export function Dashboard() {
                   <FileCode size={18} />
                   Jira
                 </div>
-                <p className="export-panel-hint">API URL and credentials are configured in Settings.</p>
+                <p className="export-panel-hint">Jira site and sign-in details are saved in Settings.</p>
                 <div className="input-group">
                   <Tooltip content="Jira project key (e.g. PROJ)">
                     <label htmlFor="jira-project">Project key</label>
@@ -1457,7 +1490,7 @@ export function Dashboard() {
                   <Github size={18} />
                   GitHub
                 </div>
-                <p className="export-panel-hint">Repo and token are configured in Settings.</p>
+                <p className="export-panel-hint">Repository and GitHub sign-in are saved in Settings.</p>
                 <Tooltip content="Create GitHub issues for selected tasks">
                   <button className="btn btn-primary" onClick={handleExportGitHub} disabled={!!loading}>
                     {loading === 'github' ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
@@ -1546,6 +1579,7 @@ export function Dashboard() {
 
 function SettingsPage({
   onResetAll,
+  onSignOut,
   loading,
   jiraUrl,
   setJiraUrl,
@@ -1559,6 +1593,7 @@ function SettingsPage({
   setGhToken,
 }: {
   onResetAll: () => void
+  onSignOut: () => void | Promise<void>
   loading: boolean
   jiraUrl: string
   setJiraUrl: (v: string) => void
@@ -1576,14 +1611,26 @@ function SettingsPage({
       <header className="main-header">
         <div>
           <h1>Settings</h1>
-          <p>API credentials and workspace</p>
+          <p>Connections and workspace</p>
         </div>
       </header>
       <div className="settings-cards">
         <div className="card" style={{ maxWidth: 520 }}>
           <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
+            <ShieldCheck size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
+            Account
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
+            Signing out ends your GitHub session for Compliance Scanner. Sign in again anytime to continue.
+          </p>
+          <button type="button" className="btn btn-secondary" onClick={() => onSignOut()}>
+            Sign out
+          </button>
+        </div>
+        <div className="card" style={{ maxWidth: 520 }}>
+          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
             <FileCode size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
-            Jira API & credentials
+            Jira
           </h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
             Configure once; use project/board on the main Export section.
@@ -1595,14 +1642,14 @@ function SettingsPage({
             <input id="settings-jira-url" type="text" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} placeholder="https://your-domain.atlassian.net" />
           </div>
           <div className="input-group">
-            <Tooltip content="Email used for Jira API authentication">
+            <Tooltip content="Email you use to sign in to Jira">
               <label htmlFor="settings-jira-email">Email</label>
             </Tooltip>
             <input id="settings-jira-email" type="text" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder="you@company.com" />
           </div>
           <div className="input-group">
-            <Tooltip content="API token from Atlassian (leave blank to use server .env)">
-              <label htmlFor="settings-jira-token">API token</label>
+            <Tooltip content="From your Atlassian account, if your Jira site requires it.">
+              <label htmlFor="settings-jira-token">Jira credential</label>
             </Tooltip>
             <input id="settings-jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
           </div>
@@ -1610,20 +1657,20 @@ function SettingsPage({
         <div className="card" style={{ maxWidth: 520 }}>
           <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-base)' }}>
             <Github size={18} style={{ verticalAlign: 'middle', marginRight: 'var(--space-2)' }} />
-            GitHub API & credentials
+            GitHub
           </h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '0 0 var(--space-4)', lineHeight: 1.5 }}>
-            Repo and token for creating issues from the main Export section.
+            Repository and GitHub credential for creating issues from Export.
           </p>
           <div className="input-group">
             <Tooltip content="Repository as owner/name (e.g. owner/repo)">
-              <label htmlFor="settings-gh-repo">Repo (owner/name)</label>
+              <label htmlFor="settings-gh-repo">Repository</label>
             </Tooltip>
             <input id="settings-gh-repo" type="text" value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="owner/repo" />
           </div>
           <div className="input-group">
-            <Tooltip content="Personal access token for GitHub API">
-              <label htmlFor="settings-gh-token">Token</label>
+            <Tooltip content="GitHub credential for repository exports.">
+              <label htmlFor="settings-gh-token">GitHub credential</label>
             </Tooltip>
             <input id="settings-gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
           </div>
@@ -1667,7 +1714,7 @@ function AuditPage({
   }
   return (
     <>
-      <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+      <header className="main-header main-header-split">
         <div>
           <h1>Audit trail</h1>
           <p>Tamper-evident log of access and actions (§ 2.2.1)</p>
@@ -1722,7 +1769,7 @@ function HistoryPage({
 
   return (
     <>
-      <header className="main-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+      <header className="main-header main-header-split">
         <div>
           <h1>Export history</h1>
           <p>History of created Jira tickets and GitHub issues</p>

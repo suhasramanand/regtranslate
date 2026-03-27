@@ -279,3 +279,156 @@ export async function resetAllData(): Promise<{ ok: boolean; cleared: string[] }
     method: 'POST',
   })
 }
+
+// --- Compliance Scanner API ---
+
+export const SCANNER_API_BASE = import.meta.env.VITE_SCANNER_API_URL || 'http://127.0.0.1:9010'
+
+async function fetchScannerApi<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${SCANNER_API_BASE}${url}`, {
+    credentials: 'include',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    const msg = err.detail ?? err.message ?? res.statusText
+    throw new Error(Array.isArray(msg) ? msg.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join('; ') : String(msg))
+  }
+  return res.json()
+}
+
+export interface ScannerRun {
+  id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  org_source: { org: string; provider: 'github' }
+  repos: Array<{ full_name: string; default_branch: string; commit_sha: string }>
+  counts: {
+    repos_total: number
+    repos_done: number
+    files_indexed: number
+    chunks_indexed: number
+    controls_total: number
+    controls_done: number
+    findings_total: number
+    findings_non_compliant: number
+    findings_unknown: number
+  }
+}
+
+export interface ScannerFinding {
+  control_id: string
+  control_title: string
+  status: 'compliant' | 'non_compliant' | 'unknown'
+  confidence?: number | null
+  summary: string
+  gap_description: string
+  acceptance_criteria: string[]
+  evidence_links: Array<{ url: string; label?: string }>
+  evidence_snippets: Array<{ path?: string; start_line?: number; end_line?: number; why?: string; preview?: string }>
+}
+
+export async function scannerStartOrgScan(params: {
+  org: string
+  repos?: string[] | null
+  selected_repos?: Array<{ full_name: string; default_branch: string }> | null
+  github_token?: string | null
+  scan_all_org?: boolean
+}): Promise<{ run_id: string; status: ScannerRun['status'] }> {
+  const headers: Record<string, string> = {}
+  if (params.github_token?.trim()) {
+    headers['X-Scanner-GitHub-Token'] = params.github_token.trim()
+  }
+  const scanAll = params.scan_all_org === true
+  return fetchScannerApi('/org-scan/start', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      org: params.org,
+      repos: scanAll ? null : params.repos ?? null,
+      selected_repos: scanAll ? null : params.selected_repos ?? null,
+      config: { github_token: params.github_token ?? undefined },
+    }),
+  })
+}
+
+export async function scannerGithubStatus(): Promise<{
+  oauth_configured: boolean
+  client_id: string | null
+  redirect_uri: string
+}> {
+  return fetchScannerApi('/auth/github/status')
+}
+
+export async function scannerGithubSession(): Promise<{
+  connected: boolean
+  login?: string
+  avatar_url?: string | null
+  oauth_configured: boolean
+  session_source?: string
+}> {
+  return fetchScannerApi('/github/session')
+}
+
+export async function scannerGithubPatLogin(token: string): Promise<{ ok: boolean; login: string }> {
+  return fetchScannerApi('/auth/github/pat', {
+    method: 'POST',
+    body: JSON.stringify({ token: token.trim() }),
+  })
+}
+
+export async function scannerGithubOrgs(githubToken?: string | null): Promise<{ orgs: string[] }> {
+  const headers: Record<string, string> = {}
+  if (githubToken?.trim()) headers['X-Scanner-GitHub-Token'] = githubToken.trim()
+  return fetchScannerApi('/github/orgs', { headers })
+}
+
+export async function scannerGithubOrgRepos(
+  org: string,
+  opts?: { limit?: number; githubToken?: string | null },
+): Promise<{
+  repos: Array<{ full_name: string; default_branch: string; private: boolean; description: string }>
+}> {
+  const headers: Record<string, string> = {}
+  if (opts?.githubToken?.trim()) headers['X-Scanner-GitHub-Token'] = opts.githubToken.trim()
+  const q = opts?.limit != null ? `?limit=${encodeURIComponent(String(opts.limit))}` : ''
+  return fetchScannerApi(`/github/orgs/${encodeURIComponent(org)}/repos${q}`, { headers })
+}
+
+export async function scannerGithubDisconnect(): Promise<{ ok: boolean }> {
+  return fetchScannerApi('/auth/github/disconnect', { method: 'POST', body: JSON.stringify({}) })
+}
+
+export async function scannerGetRun(runId: string): Promise<ScannerRun> {
+  return fetchScannerApi(`/runs/${encodeURIComponent(runId)}`)
+}
+
+export async function scannerGetFindings(runId: string): Promise<{ findings: ScannerFinding[] }> {
+  return fetchScannerApi(`/runs/${encodeURIComponent(runId)}/findings`)
+}
+
+export async function scannerExportToJira(params: {
+  run_id: string
+  project_key: string
+  url?: string | null
+  email?: string | null
+  api_token?: string | null
+  only_non_compliant?: boolean
+}): Promise<{ keys: string[] }> {
+  return fetchScannerApi(`/runs/${encodeURIComponent(params.run_id)}/export/jira`, {
+    method: 'POST',
+    body: JSON.stringify({
+      project_key: params.project_key,
+      url: params.url ?? null,
+      email: params.email ?? null,
+      api_token: params.api_token ?? null,
+      only_non_compliant: params.only_non_compliant ?? true,
+    }),
+  })
+}

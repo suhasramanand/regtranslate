@@ -1,0 +1,34 @@
+- id: RT-2.5.1-MFA
+  title: Enforce MFA for privileged access
+  description: Detect whether MFA is required/enforced for admin or all users where applicable.
+  severity: critical
+  queries:
+    - query: "mfa multi-factor 2fa otp totp webauthn duo okta authy sms factor"
+    - query: "require_mfa enforce_mfa mfa_required two_factor"
+  acceptance_criteria:
+    - "MFA is required for privileged/admin accounts at minimum."
+    - "MFA enrollment and challenge are enforced server-side (not only UI)."
+    - "Backup/recovery codes or alternative secure recovery is documented."
+
+- id: RT-2.1.4-ENCRYPTION
+  title: Encrypt data at rest and in transit
+  description: Evidence of TLS and encryption at rest for sensitive data stores.
+  severity: critical
+  queries:
+    - query: "tls https ssl certificate HSTS secure transport"
+    - query: "encryption at rest kms key vault envelope encryption aes-256"
+    - query: "postgres sslmode mongodb tls s3 sse kms"
+  acceptance_criteria:
+    - "All external traffic uses TLS with strong configuration."
+    - "Sensitive data stores use encryption at rest (KMS-managed keys where possible)."
+
+- id: RT-2.2.1-AUDIT_LOGGING
+  title: Tamper-evident audit logging with retention
+  description: Evidence of audit events, required fields, tamper-evidence, and retention policy.
+  severity: high
+  queries:
+    - query: "audit log tamper hash chain retention append-only"
+    - query: "login failed authentication event source_ip resource_accessed"
+  acceptance_criteria:
+    - "Logs include timestamp, user_id, action, resource, source_ip."
+    - "Audit logs are tamper-evident and retained for required period."
