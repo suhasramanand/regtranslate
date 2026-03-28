@@ -63,12 +63,17 @@
   /* Radii */
   --radius-sm: 6px;
   --radius: 8px;
+  --radius-md: 10px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 24px;
 
   /* Transitions */
   --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Background grid (full-bleed pages layer this over --bg) */
+  --bg-grid-size: 44px;
+  --bg-grid-line: rgba(15, 23, 42, 0.065);
 }
 
 /* Dark mode — premium, developer-focused */
@@ -110,7 +115,11 @@ body {
   font-size: var(--text-base);
   line-height: var(--leading-normal);
   color: var(--text);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

@@ -5,18 +5,27 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from app.config import CHROMA_CODE_PERSIST_DIR, CHROMA_PERSIST_DIR
+from app.config import CHROMA_CODE_PERSIST_DIR
+from app.user_paths import user_chroma_dir
+
+# Per signed-in user (GitHub login bucket). Key = request user id from middleware.
+_regulation_clients: dict[str, Any] = {}
 
 
-def _chroma_client():
-    """Chroma client for regulation / document chunks (lazy init)."""
-    import chromadb
-    from chromadb.config import Settings
+def _get_regulation_client():
+    from app.request_user import get_rt_user
 
-    return chromadb.PersistentClient(
-        path=str(CHROMA_PERSIST_DIR),
-        settings=Settings(anonymized_telemetry=False),
-    )
+    user = get_rt_user()
+    if user not in _regulation_clients:
+        import chromadb
+        from chromadb.config import Settings
+
+        path = user_chroma_dir(user)
+        _regulation_clients[user] = chromadb.PersistentClient(
+            path=str(path),
+            settings=Settings(anonymized_telemetry=False),
+        )
+    return _regulation_clients[user]
 
 
 def _chroma_code_client():
@@ -30,15 +39,11 @@ def _chroma_code_client():
     )
 
 
-_client = None
 _code_client = None
 
 
 def _get_client():
-    global _client
-    if _client is None:
-        _client = _chroma_client()
-    return _client
+    return _get_regulation_client()
 
 
 def _get_code_client():
@@ -48,10 +53,13 @@ def _get_code_client():
     return _code_client
 
 
-def reset_client() -> None:
-    """Clear cached ChromaDB clients. Call after resetting persist directories."""
-    global _client, _code_client
-    _client = None
+def reset_client(*, user: str | None = None) -> None:
+    """Clear cached ChromaDB clients. Pass user=... after clearing one tenant's DB; omit to clear all regulation caches."""
+    global _code_client
+    if user is not None:
+        _regulation_clients.pop(user, None)
+    else:
+        _regulation_clients.clear()
     _code_client = None
 
 

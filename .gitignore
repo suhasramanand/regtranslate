@@ -8,6 +8,9 @@ chroma_db/
 chroma_scanner_code/
 services/scan_history/auth.sqlite
 services/scan_history/runs.json
+# Local auth/session DBs (dev)
+scan_history/
+user_accounts/
 *.pdf
 .pytest_cache/
 .mypy_cache/

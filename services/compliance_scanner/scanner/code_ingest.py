@@ -10,7 +10,7 @@ from typing import Iterable
 
 from github.GithubException import GithubException
 
-from .github_session import _github_client
+from services.github_oauth.github_session import _github_client
 from .models import RepoRef
 
 

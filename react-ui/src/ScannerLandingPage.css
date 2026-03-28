@@ -4,12 +4,38 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background-color: var(--bg);
   position: relative;
   overflow-x: clip;
 }
 
+/* Centered graph grid — fades toward edges (matches sign-in / sign-up treatment). */
 .scanner-lp::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
+  background-position: center center;
+  mask-image: radial-gradient(
+    ellipse min(88vw, 1180px) min(78vh, 880px) at 50% 42%,
+    black 0%,
+    black 32%,
+    transparent 72%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse min(88vw, 1180px) min(78vh, 880px) at 50% 42%,
+    black 0%,
+    black 32%,
+    transparent 72%
+  );
+}
+
+.scanner-lp::after {
   content: '';
   position: fixed;
   inset: 0;
@@ -22,148 +48,13 @@
   opacity: 0.85;
 }
 
-.scanner-lp-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  border-bottom: 1px solid var(--border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+.scanner-lp > * {
+  position: relative;
+  z-index: 1;
 }
-
-.scanner-lp-header-inner {
-  max-width: var(--app-max-width, 1120px);
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-6);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-@media (min-width: 640px) {
-  .scanner-lp-header-inner {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    justify-items: stretch;
-  }
-
-  .scanner-lp-header-left {
-    justify-self: start;
-  }
-
-  .scanner-lp-nav {
-    justify-self: center;
-  }
-
-  .scanner-lp-theme {
-    justify-self: end;
-  }
-}
-
-.scanner-lp-header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.scanner-lp-brand-home {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--accent);
-  transition: background var(--transition), border-color var(--transition);
-}
-
-.scanner-lp-brand-home:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-}
-
-.scanner-lp-header-divider {
-  width: 1px;
-  height: 1.25rem;
-  background: var(--border);
-}
-
-.scanner-lp-product {
-  font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-.scanner-lp-nav {
-  display: none;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-@media (min-width: 640px) {
-  .scanner-lp-nav {
-    display: flex;
-  }
-}
-
-.scanner-lp-nav-link {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-decoration: none;
-  border-radius: var(--radius);
-  transition: background var(--transition), color var(--transition);
-}
-
-.scanner-lp-nav-link:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-.scanner-lp-nav-link--emphasis {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.scanner-lp-nav-link--emphasis:hover {
-  color: var(--accent-hover);
-  background: rgba(45, 122, 101, 0.08);
-}
-
-[data-theme='dark'] .scanner-lp-nav-link--emphasis:hover {
-  background: rgba(92, 217, 168, 0.1);
-}
-
-.scanner-lp-theme {
-  flex-shrink: 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
-
-.scanner-lp-theme:hover {
-  background: var(--bg-elevated);
-  color: var(--text);
-}
-
 
 .scanner-lp-main {
   flex: 1;
-  position: relative;
-  z-index: 1;
   padding: var(--space-10) var(--space-6) var(--space-16);
 }
 

@@ -1,13 +1,13 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { scannerGithubSession } from './api'
+import { authMe, scannerGithubSession } from './api'
 import './App.css'
 
 type GateState = 'loading' | 'in' | 'out'
 
 /**
- * Renders children only when Compliance Scanner reports an active GitHub session; otherwise redirects to /login.
+ * Renders children when email/password session or GitHub (scanner) session is active; otherwise redirects to /login.
  */
 export function GithubSessionGate({ children }: { children: ReactNode }) {
   const location = useLocation()
@@ -15,9 +15,11 @@ export function GithubSessionGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
-    scannerGithubSession()
-      .then((s) => {
-        if (!cancelled) setState(s.connected ? 'in' : 'out')
+    Promise.all([authMe(), scannerGithubSession()])
+      .then(([me, gh]) => {
+        if (cancelled) return
+        const inApp = me.authenticated === true || gh.connected === true
+        setState(inApp ? 'in' : 'out')
       })
       .catch(() => {
         if (!cancelled) setState('out')

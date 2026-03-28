@@ -3,15 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   FileText,
   ArrowRight,
-  Moon,
-  Sun,
   Github,
   GitBranch,
   Shield,
   ChevronDown,
 } from 'lucide-react'
-import { useTheme } from './useTheme'
 import { MarketingFooter } from './MarketingFooter'
+import { SiteHeader } from './SiteHeader'
 import './HeroPage.css'
 
 const FAQ_ITEMS = [
@@ -112,7 +110,6 @@ const HELP_LINKS = [
 ] as const
 
 export function HeroPage() {
-  const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const [platformOpen, setPlatformOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -150,12 +147,10 @@ export function HeroPage() {
 
   return (
     <div className="hero hero--marketing">
-      <header className="hero-header hero-header--marketing">
-        <div className="hero-header-inner hero-header-inner--marketing">
-          <Link to="/" className="hero-brand-split" aria-current="page">
-            <span className="hero-brand-reg">Reg</span>
-            <span className="hero-brand-translate">Translate</span>
-          </Link>
+      <SiteHeader
+        variant="marketing"
+        brandCurrent
+        marketingCenter={
           <nav className="hero-nav-center" aria-label="Product">
             <div className="hero-nav-dropdown" ref={megaRef}>
               <button
@@ -251,24 +246,8 @@ export function HeroPage() {
               </div>
             </div>
           </nav>
-          <div className="hero-header-actions">
-            <Link to="/login" className="hero-nav-login">
-              Log in
-            </Link>
-            <Link to="/signup" className="hero-btn-get-started">
-              Get Started
-            </Link>
-            <button
-              type="button"
-              className="hero-theme-toggle hero-theme-toggle--minimal"
-              onClick={toggleTheme}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       <main className="hero-main hero-main--marketing" id="main-content">
         <div className="hero-shell hero-shell--marketing">

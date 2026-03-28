@@ -4,11 +4,13 @@ Separate service for org-wide and CI compliance scanning.
 
 ## Run locally
 
-From repo root:
+From repo root (so `.env` is found; the app also loads `REGTRANSLATE_ROOT/.env` explicitly):
 
 ```bash
-python -m uvicorn services.compliance_scanner.main:app --reload --port 8010
+python -m uvicorn services.compliance_scanner.main:app --reload --host 127.0.0.1 --port 9010
 ```
+
+GitHub OAuth and PAT login run on a **separate** service (port **9020** by default). Start it with `python -m uvicorn services.github_oauth.main:app --host 127.0.0.1 --port 9020` (see `services/github_oauth/README.md`). With Vite, `/oauth` is proxied to 9020. OAuth env vars live in the same repo `.env` (see `.env.example`).
 
 ### Use GitHub CLI for auth (recommended local dev)
 

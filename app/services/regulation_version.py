@@ -9,10 +9,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-_REG_DIR = Path(__file__).resolve().parents[1].parent / "regulation_versions"
-_REG_DIR.mkdir(parents=True, exist_ok=True)
-VERSIONS_FILE = _REG_DIR / "versions.json"
+from app.request_user import get_rt_user
+from app.user_paths import user_regulation_versions_dir
+
 MAX_ENTRIES = 500
+
+
+def _versions_file() -> Path:
+    return user_regulation_versions_dir(get_rt_user()) / "versions.json"
 
 
 @dataclass
@@ -29,17 +33,18 @@ class RegulationVersion:
 
 
 def _load() -> list[dict]:
-    if not VERSIONS_FILE.exists():
+    vf = _versions_file()
+    if not vf.exists():
         return []
     try:
-        data = json.loads(VERSIONS_FILE.read_text())
+        data = json.loads(vf.read_text())
         return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
 def _save(entries: list[dict]) -> None:
-    VERSIONS_FILE.write_text(json.dumps(entries, indent=2))
+    _versions_file().write_text(json.dumps(entries, indent=2))
 
 
 def _content_hash(content: bytes) -> str:

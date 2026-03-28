@@ -2,6 +2,23 @@ import type { ExtractionTask, ExtractResponse, ProcessResponse } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+function _demoHeader(): boolean {
+  return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1'
+}
+
+/** Include session cookies; mark guided demo so API uses the __demo__ data bucket. */
+function apiFetchInit(extra?: RequestInit): RequestInit {
+  const headers = new Headers(extra?.headers)
+  if (_demoHeader()) headers.set('X-Regtranslate-Demo', '1')
+  const init: RequestInit = { ...extra, credentials: 'include', headers }
+  if (extra?.body instanceof FormData) {
+    const h = new Headers(init.headers)
+    h.delete('Content-Type')
+    init.headers = h
+  }
+  return init
+}
+
 export interface FlowStage {
   id: string
   title: string
@@ -81,13 +98,11 @@ export async function appendAuditLog(params: {
 }
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
+  const headers = new Headers(options?.headers)
+  if (!(options?.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  const res = await fetch(`${API_BASE}${url}`, apiFetchInit({ ...options, headers }))
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const msg = err.detail ?? err.message ?? res.statusText
@@ -96,16 +111,52 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
+export type AuthMeResponse = {
+  authenticated: boolean
+  method?: string
+  email?: string
+  github_login?: string
+  user_id?: string
+}
+
+export async function authMe(): Promise<AuthMeResponse> {
+  return fetchApi<AuthMeResponse>('/auth/me')
+}
+
+export async function authRegister(
+  email: string,
+  password: string,
+): Promise<{ ok: boolean; email: string; user_id: string }> {
+  return fetchApi<{ ok: boolean; email: string; user_id: string }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function authLogin(
+  email: string,
+  password: string,
+): Promise<{ ok: boolean; email: string; user_id: string }> {
+  return fetchApi<{ ok: boolean; email: string; user_id: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function authLogout(): Promise<{ ok: boolean }> {
+  return fetchApi<{ ok: boolean }>('/auth/logout', { method: 'POST', body: JSON.stringify({}) })
+}
+
 export async function processDocument(
   file: File,
   regulationName: string = 'Custom'
 ): Promise<ProcessResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_BASE}/process?regulation_name=${encodeURIComponent(regulationName)}`, {
-    method: 'POST',
-    body: formData,
-  })
+  const res = await fetch(
+    `${API_BASE}/process?regulation_name=${encodeURIComponent(regulationName)}`,
+    apiFetchInit({ method: 'POST', body: formData }),
+  )
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const msg = err.detail ?? err.message ?? res.statusText
@@ -192,10 +243,10 @@ export async function getRegulationVersions(regulationName?: string, limit?: num
 export async function checkRegulationUpdate(docId: string, file: File): Promise<{ needs_update: boolean; current_hash?: string; new_hash: string }> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_BASE}/regulation/check-update?doc_id=${encodeURIComponent(docId)}`, {
-    method: 'POST',
-    body: formData,
-  })
+  const res = await fetch(
+    `${API_BASE}/regulation/check-update?doc_id=${encodeURIComponent(docId)}`,
+    apiFetchInit({ method: 'POST', body: formData }),
+  )
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? res.statusText)
@@ -211,7 +262,7 @@ export async function checkRegulationContentChange(
   formData.append('file', file)
   const res = await fetch(
     `${API_BASE}/regulation/check-content-change?regulation_name=${encodeURIComponent(regulationName)}`,
-    { method: 'POST', body: formData },
+    apiFetchInit({ method: 'POST', body: formData }),
   )
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -303,16 +354,38 @@ export async function resetAllData(): Promise<{ ok: boolean; cleared: string[] }
 
 // --- Compliance Scanner API ---
 
-export const SCANNER_API_BASE = import.meta.env.VITE_SCANNER_API_URL || 'http://127.0.0.1:9010'
+export const SCANNER_API_BASE =
+  import.meta.env.VITE_SCANNER_API_URL || (import.meta.env.DEV ? '/scanner' : 'http://127.0.0.1:9010')
+
+/** GitHub OAuth + PAT + session (separate service; default port 9020 in production). */
+export const GITHUB_OAUTH_API_BASE =
+  import.meta.env.VITE_GITHUB_OAUTH_URL || (import.meta.env.DEV ? '/oauth' : 'http://127.0.0.1:9020')
+
+async function fetchGithubOAuthApi<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers)
+  headers.set('Content-Type', 'application/json')
+  if (_demoHeader()) headers.set('X-Regtranslate-Demo', '1')
+  const res = await fetch(`${GITHUB_OAUTH_API_BASE}${url}`, {
+    credentials: 'include',
+    ...options,
+    headers,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    const msg = err.detail ?? err.message ?? res.statusText
+    throw new Error(Array.isArray(msg) ? msg.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join('; ') : String(msg))
+  }
+  return res.json()
+}
 
 async function fetchScannerApi<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers)
+  headers.set('Content-Type', 'application/json')
+  if (_demoHeader()) headers.set('X-Regtranslate-Demo', '1')
   const res = await fetch(`${SCANNER_API_BASE}${url}`, {
     credentials: 'include',
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -386,7 +459,7 @@ export async function scannerGithubStatus(): Promise<{
   client_id: string | null
   redirect_uri: string
 }> {
-  return fetchScannerApi('/auth/github/status')
+  return fetchGithubOAuthApi('/auth/github/status')
 }
 
 export async function scannerGithubSession(): Promise<{
@@ -396,11 +469,11 @@ export async function scannerGithubSession(): Promise<{
   oauth_configured: boolean
   session_source?: string
 }> {
-  return fetchScannerApi('/github/session')
+  return fetchGithubOAuthApi('/github/session')
 }
 
 export async function scannerGithubPatLogin(token: string): Promise<{ ok: boolean; login: string }> {
-  return fetchScannerApi('/auth/github/pat', {
+  return fetchGithubOAuthApi('/auth/github/pat', {
     method: 'POST',
     body: JSON.stringify({ token: token.trim() }),
   })
@@ -439,7 +512,7 @@ export async function scannerGithubUserRepos(opts?: {
 }
 
 export async function scannerGithubDisconnect(): Promise<{ ok: boolean }> {
-  return fetchScannerApi('/auth/github/disconnect', { method: 'POST', body: JSON.stringify({}) })
+  return fetchGithubOAuthApi('/auth/github/disconnect', { method: 'POST', body: JSON.stringify({}) })
 }
 
 export async function scannerGetRun(runId: string): Promise<ScannerRun> {

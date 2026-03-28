@@ -2,13 +2,22 @@
 .app {
   min-height: 100vh;
   overflow: hidden;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
   display: flex;
   flex-direction: column;
 }
 
+.app-dashboard,
+.app-dashboard .main {
+  background-image: none;
+}
+
 [data-theme='dark'] .app {
-  background: var(--bg);
+  background-color: var(--bg);
 }
 
 /* Pill sidebar - liquid glass style, visible against page */
@@ -396,7 +405,11 @@
   overflow-y: auto;
   padding: var(--space-6) var(--space-6) var(--space-12);
   margin-left: var(--dashboard-sidebar-gutter, calc(72px + var(--space-4) * 2));
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
   position: relative;
 }
 
@@ -1290,7 +1303,11 @@
   justify-content: center;
   gap: var(--space-5);
   padding: var(--space-8);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
   position: relative;
 }
 

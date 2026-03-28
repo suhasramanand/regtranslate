@@ -7,41 +7,23 @@ import os
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.models.schemas import ExtractionTask
 from app.services import jira_export
 
 from .github_session import (
-    build_authorize_url,
-    clear_github_token_cookie,
-    clear_pending_oauth,
-    exchange_code_for_token,
     get_github_token_from_cookie,
-    github_user_login,
-    is_oauth_configured,
     list_authenticated_user_repos_brief,
     list_org_repos_brief,
     list_user_orgs,
-    new_oauth_state,
-    oauth_client_config,
-    read_pending_oauth,
-    set_pending_oauth,
 )
 from .models import OrgSource, RepoRef, ScanRun, ScanStatus
 from .persistence import get_run, list_runs, upsert_run
 from .results import load_findings
 from .runner import run_org_scan
-from .session_store import (
-    SESSION_COOKIE_NAME,
-    SESSION_MAX_AGE_SECONDS,
-    delete_session,
-    get_session_row,
-    get_token_for_session,
-    insert_session,
-    prune_expired_sessions,
-)
+from .session_store import SESSION_COOKIE_NAME, get_token_for_session, prune_expired_sessions
 
 
 class RepoRefIn(BaseModel):
@@ -81,21 +63,6 @@ class GitHubPatLoginRequest(BaseModel):
 def _session_id_from_request(request: Request) -> str | None:
     s = request.cookies.get(SESSION_COOKIE_NAME)
     return s.strip() if s and str(s).strip() else None
-
-
-def _set_scanner_session_cookie(response: Response, session_id: str) -> None:
-    response.set_cookie(
-        SESSION_COOKIE_NAME,
-        session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_MAX_AGE_SECONDS,
-        path="/",
-    )
-
-
-def _clear_scanner_session_cookie(response: Response) -> None:
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
 
 
 def resolve_github_token_from_request(request: Request) -> str | None:
@@ -204,9 +171,9 @@ def create_app() -> FastAPI:
   <body style="font-family: ui-sans-serif, system-ui; max-width: 880px; margin: 32px auto; padding: 0 16px;">
     <h2>Compliance Scanner</h2>
     <p>Use the React UI at <code>/scanner</code> or OpenAPI at <code>/docs</code>.</p>
+    <p>GitHub sign-in runs on the <strong>OAuth service</strong> (default <code>http://127.0.0.1:9020</code>), not this API.</p>
     <ul>
       <li><a href="/docs">OpenAPI docs</a></li>
-      <li><a href="/auth/github/status">GitHub OAuth status</a></li>
     </ul>
   </body>
 </html>"""
@@ -215,123 +182,6 @@ def create_app() -> FastAPI:
     def health():
         prune_expired_sessions()
         return {"ok": True, "service": "compliance-scanner"}
-
-    @app.get("/auth/github/status")
-    def auth_github_status():
-        client_id, _, redirect_uri = oauth_client_config()
-        return {
-            "oauth_configured": is_oauth_configured(),
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-        }
-
-    @app.get("/auth/github/login")
-    def auth_github_login(request: Request, next: str | None = None):
-        if not is_oauth_configured():
-            raise HTTPException(
-                503,
-                "GitHub OAuth is not configured. Set GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET.",
-            )
-        _, _, redirect_uri = oauth_client_config()
-        state = new_oauth_state()
-        referer = request.headers.get("referer") or ""
-        default_next = "http://127.0.0.1:5173/scanner"
-        raw = (next or referer or default_next).strip()
-        target = sanitize_oauth_next_url(raw)
-        url = build_authorize_url(state=state, redirect_uri=redirect_uri)
-        resp = RedirectResponse(url=url)
-        set_pending_oauth(resp, state=state, next_url=target)
-        return resp
-
-    @app.get("/auth/github/callback")
-    def auth_github_callback(request: Request, code: str | None = None, state: str | None = None):
-        if not code or not state:
-            raise HTTPException(400, "Missing OAuth code or state")
-        pending = read_pending_oauth(request)
-        if not pending or pending.get("state") != state:
-            raise HTTPException(400, "Invalid or expired OAuth state. Start again from the Scanner UI.")
-        next_url = sanitize_oauth_next_url(pending.get("next") or "http://127.0.0.1:5173/scanner")
-        try:
-            access = exchange_code_for_token(code)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-        try:
-            u = github_user_login(access)
-        except Exception as e:
-            raise HTTPException(400, f"GitHub token valid but user lookup failed: {e}") from e
-        old_sid = _session_id_from_request(request)
-        delete_session(old_sid)
-        sid = insert_session(
-            github_token=access,
-            github_login=u.login,
-            avatar_url=u.avatar_url,
-            source="oauth",
-        )
-        resp = RedirectResponse(url=next_url)
-        _set_scanner_session_cookie(resp, sid)
-        clear_github_token_cookie(resp)
-        clear_pending_oauth(resp)
-        return resp
-
-    @app.post("/auth/github/pat")
-    def auth_github_pat(request: Request, body: GitHubPatLoginRequest):
-        t = body.token.strip()
-        if not t:
-            raise HTTPException(400, "Token is required")
-        try:
-            u = github_user_login(t)
-        except Exception as e:
-            raise HTTPException(401, f"Invalid GitHub token: {e}") from e
-        old_sid = _session_id_from_request(request)
-        delete_session(old_sid)
-        sid = insert_session(
-            github_token=t,
-            github_login=u.login,
-            avatar_url=u.avatar_url,
-            source="pat",
-        )
-        r = JSONResponse({"ok": True, "login": u.login})
-        _set_scanner_session_cookie(r, sid)
-        clear_github_token_cookie(r)
-        return r
-
-    @app.post("/auth/github/disconnect")
-    def github_disconnect(request: Request):
-        sid = _session_id_from_request(request)
-        delete_session(sid)
-        body = {"ok": True}
-        r = JSONResponse(body)
-        _clear_scanner_session_cookie(r)
-        clear_github_token_cookie(r)
-        return r
-
-    @app.get("/github/session")
-    def github_session(request: Request):
-        prune_expired_sessions()
-        sid = _session_id_from_request(request)
-        row = get_session_row(sid)
-        if row:
-            return {
-                "connected": True,
-                "login": row["github_login"],
-                "avatar_url": row.get("avatar_url"),
-                "oauth_configured": is_oauth_configured(),
-                "session_source": row.get("source"),
-            }
-        t = get_github_token_from_cookie(request)
-        if not t:
-            return {"connected": False, "oauth_configured": is_oauth_configured()}
-        try:
-            u = github_user_login(t)
-            return {
-                "connected": True,
-                "login": u.login,
-                "avatar_url": u.avatar_url,
-                "oauth_configured": is_oauth_configured(),
-                "session_source": "legacy_cookie",
-            }
-        except Exception:
-            return {"connected": False, "oauth_configured": is_oauth_configured()}
 
     @app.get("/github/orgs")
     def github_orgs(

@@ -1,10 +1,7 @@
 import { Link } from 'react-router-dom'
 import {
-  FileText,
   ArrowRight,
   Github,
-  Moon,
-  Sun,
   ScanSearch,
   GitBranch,
   Database,
@@ -15,47 +12,14 @@ import {
   FileCode,
   CheckCircle2,
 } from 'lucide-react'
-import { useTheme } from './useTheme'
 import { MarketingFooter } from './MarketingFooter'
+import { SiteHeader } from './SiteHeader'
 import './ScannerLandingPage.css'
 
 export function ScannerLandingPage() {
-  const { theme, toggleTheme } = useTheme()
   return (
     <div className="scanner-lp">
-      <header className="scanner-lp-header">
-        <div className="scanner-lp-header-inner">
-          <div className="scanner-lp-header-left">
-            <Link to="/" className="scanner-lp-brand-home" aria-label="RegTranslate home">
-              <FileText size={18} strokeWidth={2} aria-hidden />
-            </Link>
-            <span className="scanner-lp-header-divider" aria-hidden />
-            <span className="scanner-lp-product">Compliance Scanner</span>
-          </div>
-          <nav className="scanner-lp-nav" aria-label="Site">
-            <Link to="/" className="scanner-lp-nav-link">
-              Home
-            </Link>
-            <Link to="/dashboard?demo=1" className="scanner-lp-nav-link">
-              Demo
-            </Link>
-            <Link to="/signup?next=/scanner/app" className="scanner-lp-nav-link scanner-lp-nav-link--emphasis">
-              Sign up
-            </Link>
-            <Link to="/login?next=/scanner/app" className="scanner-lp-nav-link">
-              Sign in
-            </Link>
-          </nav>
-          <button
-            type="button"
-            className="scanner-lp-theme"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-        </div>
-      </header>
+      <SiteHeader variant="scanner" />
 
       <main className="scanner-lp-main" id="main-content">
         <div className="scanner-lp-shell">

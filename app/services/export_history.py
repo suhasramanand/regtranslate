@@ -1,29 +1,33 @@
-"""Export history for created Jira tickets and GitHub issues."""
+"""Export history for created Jira tickets and GitHub issues (per RegTranslate user)."""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
-_HISTORY_DIR = Path(__file__).resolve().parents[1].parent / "export_history"
-_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-HISTORY_FILE = _HISTORY_DIR / "exports.json"
+from app.request_user import get_rt_user
+from app.user_paths import user_export_history_dir
+
 MAX_ENTRIES = 500
 
 
+def _history_file():
+    return user_export_history_dir(get_rt_user()) / "exports.json"
+
+
 def _load() -> list[dict]:
-    if not HISTORY_FILE.exists():
+    path = _history_file()
+    if not path.exists():
         return []
     try:
-        data = json.loads(HISTORY_FILE.read_text())
+        data = json.loads(path.read_text())
         return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
 def _save(entries: list[dict]) -> None:
-    HISTORY_FILE.write_text(json.dumps(entries, indent=2))
+    _history_file().write_text(json.dumps(entries, indent=2))
 
 
 def append_jira(project_key: str, keys: list[str], task_count: int, url: str | None = None) -> None:

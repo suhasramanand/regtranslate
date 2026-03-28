@@ -1,28 +1,32 @@
-"""Confidence calibration from user feedback."""
+"""Confidence calibration from user feedback (per RegTranslate user)."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-_CALIB_DIR = Path(__file__).resolve().parents[1].parent / "calibration"
-_CALIB_DIR.mkdir(parents=True, exist_ok=True)
-FEEDBACK_FILE = _CALIB_DIR / "feedback.json"
+from app.request_user import get_rt_user
+from app.user_paths import user_calibration_dir
+
 MAX_ENTRIES = 2000
 
 
+def _feedback_file():
+    return user_calibration_dir(get_rt_user()) / "feedback.json"
+
+
 def _load() -> list[dict]:
-    if not FEEDBACK_FILE.exists():
+    path = _feedback_file()
+    if not path.exists():
         return []
     try:
-        data = json.loads(FEEDBACK_FILE.read_text())
+        data = json.loads(path.read_text())
         return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
 def _save(entries: list[dict]) -> None:
-    FEEDBACK_FILE.write_text(json.dumps(entries, indent=2))
+    _feedback_file().write_text(json.dumps(entries, indent=2))
 
 
 def _task_key(task_id: str, title: str) -> str:

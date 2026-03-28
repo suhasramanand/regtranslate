@@ -2,84 +2,12 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+  background-size: var(--bg-grid-size) var(--bg-grid-size);
   color: var(--text);
-}
-
-.mkt-sub-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  border-bottom: 1px solid var(--border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.mkt-sub-header-inner {
-  max-width: var(--app-max-width);
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-6);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.mkt-sub-brand {
-  display: inline-flex;
-  align-items: baseline;
-  font-family: var(--font-heading);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  text-decoration: none;
-  line-height: 1;
-}
-
-.mkt-sub-brand-reg {
-  color: var(--text);
-}
-
-.mkt-sub-brand-translate {
-  color: var(--accent);
-}
-
-.mkt-sub-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.mkt-sub-login {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-decoration: none;
-}
-
-.mkt-sub-login:hover {
-  color: var(--text);
-}
-
-.mkt-sub-cta {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.5rem 1.1rem;
-  font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: white;
-  text-decoration: none;
-  background: var(--accent);
-  border-radius: 999px;
-  transition: background var(--transition), transform var(--transition);
-}
-
-.mkt-sub-cta:hover {
-  background: var(--accent-hover);
-  color: white;
-  transform: translateY(-1px);
 }
 
 .mkt-sub-main {

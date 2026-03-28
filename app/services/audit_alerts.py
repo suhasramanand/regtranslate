@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-
+from app.request_user import get_rt_user
 from app.services.audit_models import AuditLogEntry, AuditReviewRecord
 from app.services import audit_log
+from app.user_paths import user_audit_log_dir
 
-_AUDIT_LOG_DIR = Path(os.getenv("AUDIT_LOG_DIR", "./audit_logs"))
-_AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-ALERTS_FILE = _AUDIT_LOG_DIR / "alerts.jsonl"
-REVIEWS_FILE = _AUDIT_LOG_DIR / "reviews.jsonl"
+
+def _alerts_file():
+    return user_audit_log_dir(get_rt_user()) / "alerts.jsonl"
+
+
+def _reviews_file():
+    return user_audit_log_dir(get_rt_user()) / "reviews.jsonl"
 
 
 def _high_risk_actions() -> set[str]:
@@ -73,7 +75,7 @@ def run_automated_alerts(entries: list[AuditLogEntry] | None = None) -> list[dic
     for a in alerts:
         a["id"] = str(uuid.uuid4())
         a["generated_at"] = datetime.now(timezone.utc).isoformat()
-        with open(ALERTS_FILE, "a") as f:
+        with open(_alerts_file(), "a") as f:
             f.write(json.dumps(a) + "\n")
     return alerts
 
@@ -88,16 +90,17 @@ def get_high_risk_entries(limit: int = 100) -> list[AuditLogEntry]:
 def save_review_record(record: AuditReviewRecord) -> None:
     """Append a weekly or monthly review record (findings + remediation)."""
     line = json.dumps(record.model_dump()) + "\n"
-    with open(REVIEWS_FILE, "a") as f:
+    with open(_reviews_file(), "a") as f:
         f.write(line)
 
 
 def list_review_records(limit: int = 50) -> list[AuditReviewRecord]:
     """List recent review records."""
-    if not REVIEWS_FILE.exists():
+    rv = _reviews_file()
+    if not rv.exists():
         return []
     records = []
-    with open(REVIEWS_FILE) as f:
+    with open(rv) as f:
         for line in f:
             if not line.strip():
                 continue
@@ -112,10 +115,11 @@ def list_review_records(limit: int = 50) -> list[AuditReviewRecord]:
 
 def list_alerts(limit: int = 100) -> list[dict]:
     """List recent alerts."""
-    if not ALERTS_FILE.exists():
+    af = _alerts_file()
+    if not af.exists():
         return []
     alerts = []
-    with open(ALERTS_FILE) as f:
+    with open(af) as f:
         for line in f:
             if not line.strip():
                 continue

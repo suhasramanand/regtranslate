@@ -4,8 +4,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -34,6 +35,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _auth_exempt_path(path: str) -> bool:
+    """Public routes (health, auth bootstrap, docs)."""
+    p = (path.rstrip("/") or "/").lower()
+    if p in ("/docs", "/openapi.json", "/redoc"):
+        return True
+    tail = p.removeprefix("/api") if p.startswith("/api") else p
+    tail = (tail.rstrip("/") or "/").lower()
+    if tail in (
+        "/health",
+        "/ready",
+        "/demo/flow-stages",
+        "/auth/register",
+        "/auth/login",
+        "/auth/logout",
+        "/auth/me",
+    ):
+        return True
+    return False
+
+
+class RegtranslateUserContextMiddleware(BaseHTTPMiddleware):
+    """Attach signed-in GitHub user to request context; isolate PDF workflow data per user."""
+
+    async def dispatch(self, request, call_next):
+        from app.request_user import reset_rt_user, resolve_user_for_request, set_rt_user
+
+        if _auth_exempt_path(request.url.path):
+            return await call_next(request)
+        user = resolve_user_for_request(request)
+        if user is None:
+            return JSONResponse(
+                {
+                    "detail": "Sign in required. Create an account or sign in with email and password, "
+                    "or use GitHub under Settings.",
+                },
+                status_code=401,
+            )
+        tok = set_rt_user(user)
+        try:
+            return await call_next(request)
+        finally:
+            reset_rt_user(tok)
+
+
+app.add_middleware(RegtranslateUserContextMiddleware)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -152,6 +200,113 @@ FLOW_STAGES = [
 def get_flow_stages():
     """Return pipeline stages for the flow animation demo. Auto-plays through each stage."""
     return {"stages": FLOW_STAGES}
+
+
+class AuthRegisterBody(BaseModel):
+    email: str
+    password: str
+
+
+class AuthLoginBody(BaseModel):
+    email: str
+    password: str
+
+
+def _set_rt_session_cookie(response: Response, session_id: str) -> None:
+    from app.services.email_auth_store import RT_SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
+
+    response.set_cookie(
+        RT_SESSION_COOKIE,
+        session_id,
+        httponly=True,
+        samesite="lax",
+        max_age=SESSION_MAX_AGE_SECONDS,
+        path="/",
+    )
+
+
+def _clear_rt_session_cookie(response: Response) -> None:
+    from app.services.email_auth_store import RT_SESSION_COOKIE
+
+    response.delete_cookie(RT_SESSION_COOKIE, path="/")
+
+
+def _auth_session_payload(request: Request) -> dict:
+    """Who is signed in (for /auth/me; runs outside user context middleware)."""
+    from app.request_user import require_auth_enabled
+    from app.scanner_auth_bridge import github_login_from_request
+    from app.services import email_auth_store
+
+    if not require_auth_enabled():
+        return {"authenticated": True, "method": "dev", "user_id": "__local__"}
+    if (request.headers.get("x-regtranslate-demo") or "").strip() == "1":
+        return {"authenticated": True, "method": "demo", "user_id": "__demo__"}
+    gh = github_login_from_request(request)
+    if gh:
+        return {"authenticated": True, "method": "github", "github_login": gh, "user_id": gh}
+    sid = request.cookies.get(email_auth_store.RT_SESSION_COOKIE)
+    row = email_auth_store.get_session_user(sid)
+    if row:
+        uid = row["user_id"]
+        return {
+            "authenticated": True,
+            "method": "email",
+            "email": row["email"],
+            "user_id": email_auth_store.tenant_id_for_user(uid),
+        }
+    return {"authenticated": False}
+
+
+@api.get("/auth/me")
+def auth_me(request: Request):
+    from app.services import email_auth_store
+
+    email_auth_store.prune_expired_sessions()
+    return _auth_session_payload(request)
+
+
+@api.post("/auth/register")
+def auth_register(body: AuthRegisterBody, response: Response):
+    from app.services import email_auth_store
+
+    try:
+        user = email_auth_store.create_user(body.email, body.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    sid = email_auth_store.create_session(user["id"])
+    _set_rt_session_cookie(response, sid)
+    return {
+        "ok": True,
+        "email": user["email"],
+        "user_id": email_auth_store.tenant_id_for_user(user["id"]),
+    }
+
+
+@api.post("/auth/login")
+def auth_login(body: AuthLoginBody, response: Response):
+    from app.services import email_auth_store
+
+    try:
+        user = email_auth_store.verify_login(body.email, body.password)
+    except ValueError as e:
+        raise HTTPException(401, str(e)) from e
+    sid = email_auth_store.create_session(user["id"])
+    _set_rt_session_cookie(response, sid)
+    return {
+        "ok": True,
+        "email": user["email"],
+        "user_id": email_auth_store.tenant_id_for_user(user["id"]),
+    }
+
+
+@api.post("/auth/logout")
+def auth_logout(request: Request, response: Response):
+    from app.services import email_auth_store
+
+    sid = request.cookies.get(email_auth_store.RT_SESSION_COOKIE)
+    email_auth_store.delete_session(sid)
+    _clear_rt_session_cookie(response)
+    return {"ok": True}
 
 
 @api.get("/config/jira")
@@ -735,41 +890,51 @@ def validate_password_endpoint(req: ValidatePasswordRequest):
 
 @api.post("/settings/reset-all")
 def settings_reset_all():
-    """Clear all stored data: regulation versions, audit logs, export history, ChromaDB, calibration."""
-    from app.config import AUDIT_LOG_DIR, CHROMA_PERSIST_DIR
+    """Clear stored data for the current signed-in user (or dev/__demo__ tenant)."""
+    import shutil
+
+    from app.request_user import get_rt_user
+    from app.services import vector_store
+    from app.user_paths import (
+        user_audit_log_dir,
+        user_calibration_dir,
+        user_chroma_dir,
+        user_export_history_dir,
+        user_regulation_versions_dir,
+    )
+
+    user = get_rt_user()
     cleared = []
-    # Regulation versions
-    reg_versions = Path(__file__).resolve().parents[1].parent / "regulation_versions"
-    versions_file = reg_versions / "versions.json"
-    if versions_file.exists():
-        versions_file.unlink()
+
+    vf = user_regulation_versions_dir(user) / "versions.json"
+    if vf.exists():
+        vf.unlink()
         cleared.append("regulation_versions")
-    # Audit logs
-    for name in ("audit.jsonl", "chain_state.json", "reviews.jsonl"):
-        p = AUDIT_LOG_DIR / name
+
+    ex = user_export_history_dir(user) / "exports.json"
+    if ex.exists():
+        ex.unlink()
+        cleared.append("export_history")
+
+    chroma = user_chroma_dir(user)
+    if chroma.exists():
+        shutil.rmtree(chroma)
+        chroma.mkdir(parents=True, exist_ok=True)
+        cleared.append("chroma_db")
+
+    cal = user_calibration_dir(user) / "feedback.json"
+    if cal.exists():
+        cal.unlink()
+        cleared.append("calibration")
+
+    aud = user_audit_log_dir(user)
+    for name in ("audit.jsonl", "chain_state.json", "alerts.jsonl", "reviews.jsonl"):
+        p = aud / name
         if p.exists():
             p.unlink()
             cleared.append(f"audit/{name}")
-    # Export history
-    export_dir = Path(__file__).resolve().parents[1].parent / "export_history"
-    exports_file = export_dir / "exports.json"
-    if exports_file.exists():
-        exports_file.unlink()
-        cleared.append("export_history")
-    # ChromaDB
-    if CHROMA_PERSIST_DIR.exists():
-        import shutil
-        shutil.rmtree(CHROMA_PERSIST_DIR)
-        CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-        from app.services import vector_store
-        vector_store.reset_client()
-        cleared.append("chroma_db")
-    # Calibration
-    calib_dir = Path(__file__).resolve().parents[1].parent / "calibration"
-    feedback_file = calib_dir / "feedback.json"
-    if feedback_file.exists():
-        feedback_file.unlink()
-        cleared.append("calibration")
+
+    vector_store.reset_client(user=user)
     return {"ok": True, "cleared": cleared}
 
 

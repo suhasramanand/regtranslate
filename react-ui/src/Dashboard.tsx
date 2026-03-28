@@ -49,12 +49,15 @@ import {
   checkRegulationContentChange,
   appendAuditLog,
   resetAllData,
+  authLogout,
   scannerGithubDisconnect,
 } from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
+import { ComplianceScannerGithubSettings } from './ComplianceScannerGithubSettings'
 import { dashboardPath } from './dashboardPaths'
+import { readJiraExportPrefs, writeJiraExportPrefs } from './jiraExportPrefs'
 import './App.css'
 
 const REGULATION_OPTIONS = ['HIPAA', 'GDPR', 'ADA/WCAG', 'FDA 21 CFR Part 11', 'Custom']
@@ -161,10 +164,13 @@ export function Dashboard() {
   const [productContext, setProductContext] = useState('')
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
 
-  const [jiraUrl, setJiraUrl] = useState('https://your-domain.atlassian.net')
-  const [jiraEmail, setJiraEmail] = useState('')
-  const [jiraToken, setJiraToken] = useState('')
-  const [jiraProject, setJiraProject] = useState('')
+  const [jiraUrl, setJiraUrl] = useState(() => {
+    if (typeof window === 'undefined') return 'https://your-domain.atlassian.net'
+    return readJiraExportPrefs().url || 'https://your-domain.atlassian.net'
+  })
+  const [jiraEmail, setJiraEmail] = useState(() => (typeof window === 'undefined' ? '' : readJiraExportPrefs().email || ''))
+  const [jiraToken, setJiraToken] = useState(() => (typeof window === 'undefined' ? '' : readJiraExportPrefs().token || ''))
+  const [jiraProject, setJiraProject] = useState(() => (typeof window === 'undefined' ? '' : readJiraExportPrefs().project || ''))
   const [jiraBoard, setJiraBoard] = useState('')
   const [jiraSprint, setJiraSprint] = useState('')
   const [jiraAutoSprint, setJiraAutoSprint] = useState(true)
@@ -310,16 +316,25 @@ export function Dashboard() {
 
   useEffect(() => {
     if (isDemoMode) return
+    const p = readJiraExportPrefs()
     getExportConfig()
       .then(({ jira, github }) => {
         if (jira.url) setJiraUrl(jira.url)
+        else if (p.url) setJiraUrl(p.url)
         if (jira.email) setJiraEmail(jira.email)
+        else if (p.email) setJiraEmail(p.email)
         if (jira.api_token) setJiraToken(jira.api_token)
+        else if (p.token) setJiraToken(p.token)
         if (github.repo) setGhRepo(github.repo)
         if (github.token) setGhToken(github.token)
       })
       .catch(() => {})
   }, [isDemoMode])
+
+  useEffect(() => {
+    if (isDemoMode) return
+    writeJiraExportPrefs({ project: jiraProject, url: jiraUrl, email: jiraEmail, token: jiraToken })
+  }, [isDemoMode, jiraProject, jiraUrl, jiraEmail, jiraToken])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<Array<{ timestamp: string; target: string; project_key?: string; repo?: string; keys?: string[]; urls?: string[]; task_count: number; jira_url?: string }>>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -837,7 +852,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="app">
+    <div className="app app-dashboard">
       {showClearConfirm && (
         <div
           className="confirm-modal-overlay"
@@ -1138,8 +1153,14 @@ export function Dashboard() {
             <HistoryPage entries={historyEntries} />
           ) : page === 'settings' ? (
             <SettingsPage
+              isDemoMode={isDemoMode}
               onResetAll={() => setShowClearConfirm(true)}
               onSignOut={async () => {
+                try {
+                  await authLogout()
+                } catch {
+                  /* still leave app */
+                }
                 try {
                   await scannerGithubDisconnect()
                 } catch {
@@ -1148,6 +1169,8 @@ export function Dashboard() {
                 navigate(isDemoMode ? '/' : '/login', { replace: true })
               }}
               loading={settingsResetLoading}
+              jiraProject={jiraProject}
+              setJiraProject={setJiraProject}
               jiraUrl={jiraUrl}
               setJiraUrl={setJiraUrl}
               jiraEmail={jiraEmail}
@@ -1579,13 +1602,10 @@ export function Dashboard() {
                   <FileCode size={18} />
                   Jira
                 </div>
-                <p className="export-panel-hint">Jira site and sign-in details are saved in Settings.</p>
-                <div className="input-group">
-                  <Tooltip content="Jira project key (e.g. PROJ)">
-                    <label htmlFor="jira-project">Project key</label>
-                  </Tooltip>
-                  <input id="jira-project" type="text" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} placeholder="PROJ" />
-                </div>
+                <p className="export-panel-hint">
+                  Jira site, credentials, and project key are configured in{' '}
+                  <Link to={dashboardPath({ view: 'settings', demo: isDemoMode })}>Settings</Link>.
+                </p>
                 <div className="input-group">
                   <Tooltip content="Board ID from URL .../boards/42">
                     <label htmlFor="jira-board">Board ID (optional)</label>
@@ -1735,9 +1755,12 @@ export function Dashboard() {
 }
 
 function SettingsPage({
+  isDemoMode,
   onResetAll,
   onSignOut,
   loading,
+  jiraProject,
+  setJiraProject,
   jiraUrl,
   setJiraUrl,
   jiraEmail,
@@ -1749,9 +1772,12 @@ function SettingsPage({
   ghToken,
   setGhToken,
 }: {
+  isDemoMode: boolean
   onResetAll: () => void
   onSignOut: () => void | Promise<void>
   loading: boolean
+  jiraProject: string
+  setJiraProject: (v: string) => void
   jiraUrl: string
   setJiraUrl: (v: string) => void
   jiraEmail: string
@@ -1766,13 +1792,14 @@ function SettingsPage({
   return (
     <>
       <div className="settings-cards">
+        <ComplianceScannerGithubSettings isDemoMode={isDemoMode} />
         <div className="card">
           <h3 className="settings-card-title">
             <ShieldCheck size={18} aria-hidden />
             Account
           </h3>
           <p className="settings-card-desc">
-            Signing out ends your GitHub session for Compliance Scanner. Sign in again anytime to continue.
+            Sign out of RegTranslate and end your GitHub session (PDF workflow and scanner).
           </p>
           <button type="button" className="btn btn-secondary" onClick={() => onSignOut()}>
             Sign out
@@ -1784,8 +1811,14 @@ function SettingsPage({
             Jira
           </h3>
           <p className="settings-card-desc">
-            Configure once; use project and board on the main export section.
+            Used for exports from the PDF workflow and Compliance Scanner.
           </p>
+          <div className="input-group">
+            <Tooltip content="Jira project key (e.g. PROJ)">
+              <label htmlFor="settings-jira-project">Project key</label>
+            </Tooltip>
+            <input id="settings-jira-project" type="text" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} placeholder="PROJ" />
+          </div>
           <div className="input-group">
             <Tooltip content="Your Atlassian Jira instance URL">
               <label htmlFor="settings-jira-url">URL</label>
