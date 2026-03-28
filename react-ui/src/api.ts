@@ -67,6 +67,7 @@ export interface AuditLogEntry {
   resource_accessed: string
   source_ip: string
   details: string
+  audit_subject?: string
   entry_hash?: string
 }
 
@@ -79,7 +80,6 @@ export async function getAuditLogs(limit?: number, since?: string): Promise<{ en
 }
 
 export async function appendAuditLog(params: {
-  user_id: string
   action: string
   resource_accessed: string
   source_ip?: string
@@ -88,7 +88,6 @@ export async function appendAuditLog(params: {
   return fetchApi<{ ok: boolean; entry_hash: string }>('/audit/log', {
     method: 'POST',
     body: JSON.stringify({
-      user_id: params.user_id,
       action: params.action,
       resource_accessed: params.resource_accessed,
       source_ip: params.source_ip ?? '',
@@ -117,10 +116,29 @@ export type AuthMeResponse = {
   email?: string
   github_login?: string
   user_id?: string
+  audit_subject?: string
+  display_name?: string
+  organization?: string
 }
 
 export async function authMe(): Promise<AuthMeResponse> {
   return fetchApi<AuthMeResponse>('/auth/me')
+}
+
+export async function authUpdateProfile(body: {
+  display_name?: string
+  organization?: string
+}): Promise<{ ok: boolean; display_name: string; organization: string; audit_subject: string }> {
+  return fetchApi<{ ok: boolean; display_name: string; organization: string; audit_subject: string }>(
+    '/auth/profile',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        display_name: body.display_name ?? '',
+        organization: body.organization ?? '',
+      }),
+    },
+  )
 }
 
 export async function authRegister(

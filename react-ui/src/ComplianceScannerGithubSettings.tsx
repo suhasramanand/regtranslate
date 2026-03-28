@@ -42,6 +42,10 @@ export function ComplianceScannerGithubSettings({ isDemoMode }: { isDemoMode: bo
   }, [loadSession])
 
   useEffect(() => {
+    if (sessionLogin) setPatPanelOpen(false)
+  }, [sessionLogin])
+
+  useEffect(() => {
     if (searchParams.get('connected') !== '1') return
     setNotice({ kind: 'ok', text: 'GitHub connected. Your documents, tasks, and scans stay on this account.' })
     const p = new URLSearchParams(searchParams)
@@ -118,8 +122,83 @@ export function ComplianceScannerGithubSettings({ isDemoMode }: { isDemoMode: bo
     )
   }
 
+  const signInBlock = (
+    <>
+      <div className="scanner-connect-hero">
+        <div className="scanner-connect-icon" aria-hidden>
+          <Github size={36} strokeWidth={2} />
+        </div>
+        <h2 className="scanner-connect-title">GitHub access</h2>
+        <p className="scanner-connect-sub">
+          This session also protects your RegTranslate API data (separate from the Jira / export credential below).
+        </p>
+      </div>
+
+      <div className="scanner-connect-cards">
+        <button type="button" className="scanner-connect-card scanner-connect-card--primary" onClick={connectGithub} disabled={busy}>
+          <span className="scanner-connect-card-icon">
+            <Github size={22} />
+          </span>
+          <span className="scanner-connect-card-body">
+            <span className="scanner-connect-card-title">Sign in with GitHub OAuth</span>
+            <span className="scanner-connect-card-desc">Recommended — secure, scoped access</span>
+          </span>
+          <ArrowRight className="scanner-connect-card-arrow" size={20} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={`scanner-connect-card${patPanelOpen ? ' scanner-connect-card--open' : ''}`}
+          onClick={() => setPatPanelOpen((v) => !v)}
+        >
+          <span className="scanner-connect-card-icon">
+            <KeyRound size={22} />
+          </span>
+          <span className="scanner-connect-card-body">
+            <span className="scanner-connect-card-title">Use Personal Access Token</span>
+            <span className="scanner-connect-card-desc">Fallback — paste a fine-grained PAT</span>
+          </span>
+          <ArrowRight className="scanner-connect-card-arrow" size={20} aria-hidden />
+        </button>
+      </div>
+
+      {patPanelOpen && (
+        <div className="scanner-pat-panel card">
+          <div className="input-group">
+            <label htmlFor="settings-scanner-pat">GitHub credential</label>
+            <input
+              id="settings-scanner-pat"
+              type="password"
+              value={pat}
+              onChange={(e) => setPat(e.target.value)}
+              placeholder="Paste PAT, then sign in"
+              autoComplete="off"
+            />
+          </div>
+          <div className="scanner-actions github-connect-row github-connect-row--compact">
+            <button type="button" className={oauthConfigured ? 'btn btn-secondary' : 'btn btn-primary'} onClick={() => void signInWithPat()} disabled={busy || !pat.trim()}>
+              {busy ? <Loader2 size={16} className="spinner" /> : <Github size={16} />}
+              Sign in with credential
+            </button>
+          </div>
+          {!oauthConfigured && (
+            <details className="scanner-oauth-details">
+              <summary>Can’t use GitHub in the browser?</summary>
+              <span className="scanner-connect-hint">
+                Your administrator can turn on one-click GitHub for RegTranslate Compliance. You can always use{' '}
+                <strong>Sign in with credential</strong> here.
+              </span>
+            </details>
+          )}
+        </div>
+      )}
+    </>
+  )
+
   return (
-    <div className="card settings-scanner-github-card" id="compliance-scanner-github">
+    <div
+      className={`card settings-scanner-github-card${sessionLogin ? ' settings-scanner-github-card--connected' : ''}`}
+      id="compliance-scanner-github"
+    >
       <h3 className="settings-card-title">
         <Github size={18} aria-hidden />
         GitHub sign-in (RegTranslate)
@@ -137,85 +216,25 @@ export function ComplianceScannerGithubSettings({ isDemoMode }: { isDemoMode: bo
       )}
 
       <div className="scanner-connect-embed">
-        <div className="scanner-connect-hero">
-          <div className="scanner-connect-icon" aria-hidden>
-            <Github size={36} strokeWidth={2} />
-          </div>
-          <h2 className="scanner-connect-title">GitHub access</h2>
-          <p className="scanner-connect-sub">
-            This session also protects your RegTranslate API data (separate from the Jira / export credential below).
-          </p>
-        </div>
-
-        <div className="scanner-connect-cards">
-          <button type="button" className="scanner-connect-card scanner-connect-card--primary" onClick={connectGithub} disabled={busy}>
-            <span className="scanner-connect-card-icon">
-              <Github size={22} />
-            </span>
-            <span className="scanner-connect-card-body">
-              <span className="scanner-connect-card-title">Sign in with GitHub OAuth</span>
-              <span className="scanner-connect-card-desc">Recommended — secure, scoped access</span>
-            </span>
-            <ArrowRight className="scanner-connect-card-arrow" size={20} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`scanner-connect-card${patPanelOpen ? ' scanner-connect-card--open' : ''}`}
-            onClick={() => setPatPanelOpen((v) => !v)}
-          >
-            <span className="scanner-connect-card-icon">
-              <KeyRound size={22} />
-            </span>
-            <span className="scanner-connect-card-body">
-              <span className="scanner-connect-card-title">Use Personal Access Token</span>
-              <span className="scanner-connect-card-desc">Fallback — paste a fine-grained PAT</span>
-            </span>
-            <ArrowRight className="scanner-connect-card-arrow" size={20} aria-hidden />
-          </button>
-        </div>
-
-        {sessionLogin && (
-          <div className="scanner-session-banner">
-            <CheckCircle2 size={18} className="scanner-session-banner-icon" />
-            <span>
-              Signed in as <strong>{sessionLogin}</strong>
-            </span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
-              <LogOut size={14} />
-              Disconnect
-            </button>
-          </div>
-        )}
-
-        {patPanelOpen && (
-          <div className="scanner-pat-panel card">
-            <div className="input-group">
-              <label htmlFor="settings-scanner-pat">GitHub credential</label>
-              <input
-                id="settings-scanner-pat"
-                type="password"
-                value={pat}
-                onChange={(e) => setPat(e.target.value)}
-                placeholder="Paste PAT, then sign in"
-                autoComplete="off"
-              />
-            </div>
-            <div className="scanner-actions github-connect-row github-connect-row--compact">
-              <button type="button" className={oauthConfigured ? 'btn btn-secondary' : 'btn btn-primary'} onClick={() => void signInWithPat()} disabled={busy || !pat.trim()}>
-                {busy ? <Loader2 size={16} className="spinner" /> : <Github size={16} />}
-                Sign in with credential
+        {sessionLogin ? (
+          <>
+            <div className="scanner-session-banner scanner-session-banner--settings-connected">
+              <CheckCircle2 size={18} className="scanner-session-banner-icon" />
+              <span>
+                Connected as <strong>{sessionLogin}</strong>
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
+                <LogOut size={14} />
+                Disconnect
               </button>
             </div>
-            {!oauthConfigured && (
-              <details className="scanner-oauth-details">
-                <summary>Can’t use GitHub in the browser?</summary>
-                <span className="scanner-connect-hint">
-                  Your administrator can turn on one-click GitHub for RegTranslate Compliance. You can always use{' '}
-                  <strong>Sign in with credential</strong> here.
-                </span>
-              </details>
-            )}
-          </div>
+            <details className="settings-github-reconnect">
+              <summary>Use a different GitHub account or token</summary>
+              <div className="settings-github-reconnect-body">{signInBlock}</div>
+            </details>
+          </>
+        ) : (
+          signInBlock
         )}
 
         <p className="scanner-scopes-hint">

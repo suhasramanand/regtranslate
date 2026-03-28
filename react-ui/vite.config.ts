@@ -5,10 +5,12 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Bind IPv4 so http://127.0.0.1:5173 works (default [::1] breaks that URL on some systems).
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
       // Same host as /api so scanner_sid cookie applies to main API, scanner, and OAuth.

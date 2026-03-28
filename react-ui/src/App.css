@@ -1768,15 +1768,114 @@
   margin-bottom: 0;
 }
 
-.settings-cards {
+/* Settings: two columns (session + account | integrations) to cut scroll; cards stay content-height. */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-page-cols {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
-  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
   align-items: start;
 }
 
-.settings-cards .card {
-  max-width: none;
+.settings-page-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.settings-page .card {
+  height: auto;
+  min-height: 0;
+  margin-bottom: 0;
+  padding: var(--space-5);
+}
+
+.settings-card--integration .settings-card-desc--tight {
+  margin-bottom: var(--space-3);
+}
+
+.settings-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+}
+
+.settings-field-grid .input-group {
+  margin-bottom: 0;
+}
+
+.settings-field-grid--two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.settings-card--account .settings-card-desc--tight {
+  margin-bottom: var(--space-3);
+}
+
+.settings-account-audit-subject {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.settings-muted-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.settings-audit-subject-code {
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.settings-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-profile-ok {
+  font-size: var(--text-sm);
+  color: var(--success);
+}
+
+.settings-profile-err {
+  font-size: var(--text-sm);
+  color: var(--error);
+}
+
+.settings-card--clear-strip .settings-card-title {
+  margin-bottom: var(--space-1);
+}
+
+.settings-clear-strip-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-clear-strip-copy {
+  flex: 1;
+  min-width: min(100%, 20rem);
+}
+
+.settings-card-desc--flush {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.settings-clear-btn {
+  flex-shrink: 0;
 }
 
 .settings-card-title {
@@ -1797,8 +1896,18 @@
   line-height: var(--leading-relaxed);
 }
 
-@media (max-width: 700px) {
-  .settings-cards {
+.settings-card-desc--tight {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .settings-page-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-field-grid,
+  .settings-field-grid--two {
     grid-template-columns: 1fr;
   }
 }

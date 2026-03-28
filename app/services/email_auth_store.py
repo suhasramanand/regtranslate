@@ -69,6 +69,17 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+    _migrate_user_profile_columns(conn)
+
+
+def _migrate_user_profile_columns(conn: sqlite3.Connection) -> None:
+    cur = conn.execute("PRAGMA table_info(users)")
+    cols = {str(r[1]) for r in cur.fetchall()}
+    if "display_name" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+    if "organization" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN organization TEXT NOT NULL DEFAULT ''")
+    conn.commit()
 
 
 def reset_connection_for_tests() -> None:
@@ -123,8 +134,8 @@ def create_user(email: str, password: str) -> dict[str, Any]:
     with _LOCK:
         try:
             conn.execute(
-                "INSERT INTO users (id, email, password_hash, failed_attempts, last_failure_at, created_at) "
-                "VALUES (?, ?, ?, 0, NULL, ?)",
+                "INSERT INTO users (id, email, password_hash, failed_attempts, last_failure_at, created_at, display_name, organization) "
+                "VALUES (?, ?, ?, 0, NULL, ?, '', '')",
                 (uid, em, pw_h, created),
             )
             conn.commit()
@@ -136,7 +147,10 @@ def create_user(email: str, password: str) -> dict[str, Any]:
 def get_user_by_email(email: str) -> dict[str, Any] | None:
     em = normalize_email(email)
     conn = _get_conn()
-    row = conn.execute("SELECT id, email, password_hash, failed_attempts, last_failure_at FROM users WHERE email = ?", (em,)).fetchone()
+    row = conn.execute(
+        "SELECT id, email, password_hash, failed_attempts, last_failure_at, display_name, organization FROM users WHERE email = ?",
+        (em,),
+    ).fetchone()
     if not row:
         return None
     return dict(row)
@@ -207,6 +221,35 @@ def delete_session(session_id: str | None) -> None:
         conn.commit()
 
 
+def format_audit_subject(row: dict[str, Any]) -> str:
+    """Human-readable line for audit logs (email accounts)."""
+    em = (row.get("email") or "").strip()
+    dn = (row.get("display_name") or "").strip()
+    org = (row.get("organization") or "").strip()
+    parts: list[str] = []
+    if dn:
+        parts.append(dn)
+    if em:
+        parts.append(f"<{em}>" if dn else em)
+    if org:
+        parts.append(f"· {org}")
+    return " ".join(parts).strip() if parts else (em or str(row.get("user_id") or "unknown"))
+
+
+def update_user_profile(*, internal_user_id: str, display_name: str, organization: str) -> None:
+    dn = (display_name or "").strip()[:200]
+    org = (organization or "").strip()[:200]
+    conn = _get_conn()
+    with _LOCK:
+        n = conn.execute(
+            "UPDATE users SET display_name = ?, organization = ? WHERE id = ?",
+            (dn, org, internal_user_id),
+        ).rowcount
+        conn.commit()
+    if not n:
+        raise ValueError("User not found")
+
+
 def get_session_user(session_id: str | None) -> dict[str, Any] | None:
     sid = (session_id or "").strip()
     if not sid:
@@ -215,7 +258,7 @@ def get_session_user(session_id: str | None) -> dict[str, Any] | None:
     conn = _get_conn()
     with _LOCK:
         row = conn.execute(
-            "SELECT s.user_id, s.expires_at, u.email FROM sessions s "
+            "SELECT s.user_id, s.expires_at, u.email, u.display_name, u.organization FROM sessions s "
             "JOIN users u ON u.id = s.user_id WHERE s.id = ?",
             (sid,),
         ).fetchone()
@@ -225,7 +268,13 @@ def get_session_user(session_id: str | None) -> dict[str, Any] | None:
             conn.execute("DELETE FROM sessions WHERE id = ?", (sid,))
             conn.commit()
             return None
-    return {"user_id": row["user_id"], "email": row["email"]}
+    d = dict(row)
+    return {
+        "user_id": d["user_id"],
+        "email": d["email"],
+        "display_name": str(d.get("display_name") or ""),
+        "organization": str(d.get("organization") or ""),
+    }
 
 
 def prune_expired_sessions() -> None:

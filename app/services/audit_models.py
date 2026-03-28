@@ -16,6 +16,7 @@ class AuditLogEntry(BaseModel):
     resource_accessed: str
     source_ip: str
     details: str = ""
+    audit_subject: str = ""  # human-readable who (name, email, github) for reviewers
     prev_hash: str = ""
     entry_hash: str = ""
 

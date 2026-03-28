@@ -421,7 +421,7 @@ export function ScannerPage() {
   const activeOrgTab = sessionLogin && org === sessionLogin ? 'my' : org.trim() || ''
 
   return (
-    <div className="app">
+    <div className="app app-scanner">
       <header className="mobile-header">
         <Link to={dashboardPath()} className="mobile-header-brand">
           <FileText size={22} strokeWidth={2} />

@@ -29,12 +29,14 @@ export function SiteHeader({
   const isMarketing = variant === 'marketing'
   const innerClass = isMarketing ? 'site-header__inner site-header__inner--marketing' : 'site-header__inner site-header__inner--stack'
 
-  /* Auth pages: keep header for brand + escape hatch (Home, etc.); avoid duplicating
-   * the same Log in / Get Started CTAs that the center nav already provides (web.dev: one clear path). */
-  const authSurface = variant === 'login' || variant === 'signup'
+  /* Auth + scanner landing: center nav already has sign-up/sign-in; hide duplicate Log in / Get Started. */
+  const onDedicatedAuthPage = location.pathname === '/login' || location.pathname === '/signup'
+  const authSurface = variant === 'login' || variant === 'signup' || onDedicatedAuthPage
+  const onScannerPage = variant === 'scanner' || location.pathname === '/scanner'
+  const compactActionRail = authSurface || onScannerPage
 
   return (
-    <header className={`site-header${authSurface ? ' site-header--auth' : ''}`}>
+    <header className={`site-header${compactActionRail ? ' site-header--auth' : ''}`}>
       <div className={innerClass}>
         <div className="site-header__brand-wrap">
           <Link
@@ -100,7 +102,7 @@ export function SiteHeader({
         </div>
 
         <div className="site-header__actions">
-          {variant !== 'subpage' && !authSurface && (
+          {variant !== 'subpage' && !onDedicatedAuthPage && !onScannerPage && (
             <>
               <Link
                 to="/login"
@@ -109,11 +111,7 @@ export function SiteHeader({
               >
                 Log in
               </Link>
-              <Link
-                to={`/signup${variant === 'scanner' ? '?next=/scanner/app' : qs}`}
-                className="site-header__cta"
-                aria-current={location.pathname === '/signup' ? 'page' : undefined}
-              >
+              <Link to={`/signup${qs}`} className="site-header__cta" aria-current={location.pathname === '/signup' ? 'page' : undefined}>
                 Get Started
               </Link>
             </>

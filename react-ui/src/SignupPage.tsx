@@ -7,7 +7,6 @@ import {
   authMe,
   authRegister,
   scannerGithubDisconnect,
-  scannerGithubPatLogin,
   scannerGithubSession,
   scannerGithubStatus,
 } from './api'
@@ -20,20 +19,16 @@ import { validatePasswordClient } from './passwordPolicy'
 
 const SIGNUP_STEPS = [
   {
-    title: 'Create your account',
-    body: 'Register with work email and a strong password, or connect GitHub—the dashboard and PDF workflow use the same tenant either way.',
+    title: 'Account',
+    body: 'Register with work email and password, or use Continue with GitHub when OAuth is enabled.',
   },
   {
-    title: 'Optional: GitHub for scans',
-    body: 'Compliance scans need GitHub under Settings when you are ready; email-only sign-in is enough for the rest of the product.',
+    title: 'GitHub for scans',
+    body: 'Add GitHub under Settings when you need Compliance on repos.',
   },
   {
-    title: 'Workspace opens',
-    body: 'The first time you connect, we prepare your workspace automatically. Returning users pick up where they left off.',
-  },
-  {
-    title: 'Start working',
-    body: 'Land on the dashboard, run scans, or explore the guided demo anytime without signing in.',
+    title: 'Next',
+    body: 'Dashboard, scans, or the guided demo without an account.',
   },
 ] as const
 
@@ -48,13 +43,11 @@ export function SignupPage() {
   const [accountEmail, setAccountEmail] = useState('')
   const [accountPassword, setAccountPassword] = useState('')
   const [accountPassword2, setAccountPassword2] = useState('')
-  const [token, setToken] = useState('')
-  const [loading, setLoading] = useState<false | 'pat' | 'register'>(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<'checking' | 'form'>('checking')
   const [showPassword, setShowPassword] = useState(false)
   const [showPassword2, setShowPassword2] = useState(false)
-  const [showPat, setShowPat] = useState(false)
 
   const loadSession = useCallback(async () => {
     try {
@@ -101,7 +94,7 @@ export function SignupPage() {
   const connectGithub = () => {
     if (!oauthConfigured) {
       setError(
-        'One-click GitHub isn’t available on this deployment. Use “Connect with credential” below, or ask your administrator to enable browser sign-in.',
+        'GitHub sign-in isn’t available on this deployment. Ask your administrator to configure GitHub OAuth, or create an account with email and password.',
       )
       return
     }
@@ -125,7 +118,7 @@ export function SignupPage() {
       setError(pwErr)
       return
     }
-    setLoading('register')
+    setLoading(true)
     setError(null)
     try {
       await authRegister(em, accountPassword)
@@ -135,26 +128,6 @@ export function SignupPage() {
       navigate(fromPath, { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Registration failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const connectWithToken = async () => {
-    const t = token.trim()
-    if (!t) {
-      setError('Enter your GitHub credential.')
-      return
-    }
-    setLoading('pat')
-    setError(null)
-    try {
-      await scannerGithubPatLogin(t)
-      await loadSession()
-      setToken('')
-      navigate(fromPath, { replace: true })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Connection failed')
     } finally {
       setLoading(false)
     }
@@ -197,64 +170,63 @@ export function SignupPage() {
       />
 
       <main className="login-page-main">
-        <div className="login-page-split login-page-split--signup">
-          <div className="login-page-aside">
-            <p className="login-page-eyebrow">New workspace</p>
-            <h1 className="login-page-title">Create your RegTranslate access</h1>
-            <p className="login-page-lead login-page-lead--aside">
-              <strong>Email and password</strong> stay in the main column; <strong>GitHub token</strong> sign-in lives in the
-              side panel on wide screens (below it on mobile). OAuth and token both tie to the same workspace.
-            </p>
+        <div className="login-page-shell">
+          <div className="login-panel login-panel--signup login-panel--auth-card">
+            <div className="login-panel-body">
+              <div className="login-panel-copy">
+                <p className="login-page-eyebrow">New workspace</p>
+                <h1 className="login-page-title">Create your RegTranslate access</h1>
+                <p className="login-page-lead login-page-lead--in-card">
+                  Use <strong>email and password</strong> below or <strong>Continue with GitHub</strong> when your team enables it.
+                  Both use the same workspace.
+                </p>
 
-            <ol className="login-signup-steps" aria-label="How access works">
-              {SIGNUP_STEPS.map((step, i) => (
-                <li key={step.title} className="login-signup-step">
-                  <span className="login-signup-step-num" aria-hidden>
-                    {i + 1}
-                  </span>
-                  <div className="login-signup-step-body">
-                    <strong className="login-signup-step-title">{step.title}</strong>
-                    <span className="login-signup-step-text">{step.body}</span>
+                <ol className="login-signup-steps" aria-label="How access works">
+                  {SIGNUP_STEPS.map((step, i) => (
+                    <li key={step.title} className="login-signup-step">
+                      <span className="login-signup-step-num" aria-hidden>
+                        {i + 1}
+                      </span>
+                      <div className="login-signup-step-body">
+                        <strong className="login-signup-step-title">{step.title}</strong>
+                        <span className="login-signup-step-text">{step.body}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              <div className="login-panel-divider" aria-hidden="true" />
+              <div className="login-panel-fields">
+                {error && (
+                  <div className="alert alert-error login-alert" role="alert" aria-live="assertive">
+                    <AlertTriangle size={18} aria-hidden />
+                    <span>{error}</span>
                   </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="login-page-form-wrap">
-            <div className="login-panel login-panel--signup">
-          {error && (
-            <div className="alert alert-error login-alert" role="alert" aria-live="assertive">
-              <AlertTriangle size={18} aria-hidden />
-              <span>{error}</span>
-            </div>
-          )}
+                )}
 
-          <div className="login-signup-panel-grid">
-            <div className="login-signup-panel-main">
-              {oauthConfigured && (
-                <>
-                  <div className="login-actions login-actions--oauth-first">
-                    <button type="button" className="btn btn-primary login-btn-full" onClick={connectGithub} disabled={!!loading}>
-                      <Github size={18} strokeWidth={2} aria-hidden />
-                      Continue with GitHub
-                    </button>
-                  </div>
-                  <p className="login-auth-divider login-auth-divider--signup" role="separator">
-                    Or register with email
-                  </p>
-                </>
-              )}
+                <div className="login-signup-panel-body">
+                  {oauthConfigured && (
+                    <>
+                      <div className="login-actions login-actions--oauth-first">
+                        <button type="button" className="btn btn-primary login-btn-full" onClick={connectGithub} disabled={loading}>
+                          <Github size={18} strokeWidth={2} aria-hidden />
+                          Continue with GitHub
+                        </button>
+                      </div>
+                      <p className="login-auth-divider login-auth-divider--signup" role="separator">
+                        Or register with email
+                      </p>
+                    </>
+                  )}
 
-              <form
-                className="login-register-form"
-                noValidate
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void registerWithEmail()
-                }}
-              >
-                <div className="login-register-grid">
-                  <div className="login-register-field login-register-field--full">
+                  <form
+                    className="login-register-form login-signup-stack"
+                    noValidate
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void registerWithEmail()
+                    }}
+                  >
                     <div className="input-group login-token-field">
                       <label htmlFor="signup-email">Work email</label>
                       <input
@@ -271,8 +243,6 @@ export function SignupPage() {
                         onChange={(e) => setAccountEmail(e.target.value)}
                       />
                     </div>
-                  </div>
-                  <div className="login-register-field">
                     <div className="input-group login-token-field">
                       <label htmlFor="new-password">Password</label>
                       <div className="login-password-wrap">
@@ -296,15 +266,17 @@ export function SignupPage() {
                           aria-label={showPassword ? 'Hide password' : 'Show password'}
                           aria-controls="new-password"
                         >
-                          {showPassword ? <EyeOff size={18} strokeWidth={2} aria-hidden /> : <Eye size={18} strokeWidth={2} aria-hidden />}
+                          {showPassword ? (
+                            <EyeOff size={18} strokeWidth={2} aria-hidden />
+                          ) : (
+                            <Eye size={18} strokeWidth={2} aria-hidden />
+                          )}
                         </button>
                       </div>
-                      <p id="signup-password-rules" className="login-field-hint">
+                      <p id="signup-password-rules" className="login-field-hint login-field-hint--signup">
                         12+ characters · upper and lower case · number · symbol
                       </p>
                     </div>
-                  </div>
-                  <div className="login-register-field">
                     <div className="input-group login-token-field">
                       <label htmlFor="signup-password-confirm">Confirm password</label>
                       <div className="login-password-wrap">
@@ -328,107 +300,59 @@ export function SignupPage() {
                           aria-label={showPassword2 ? 'Hide password' : 'Show password'}
                           aria-controls="signup-password-confirm"
                         >
-                          {showPassword2 ? <EyeOff size={18} strokeWidth={2} aria-hidden /> : <Eye size={18} strokeWidth={2} aria-hidden />}
+                          {showPassword2 ? (
+                            <EyeOff size={18} strokeWidth={2} aria-hidden />
+                          ) : (
+                            <Eye size={18} strokeWidth={2} aria-hidden />
+                          )}
                         </button>
                       </div>
-                      <p id="signup-password-confirm-hint" className="login-field-hint">
-                        Must match the password field.
+                      <p id="signup-password-confirm-hint" className="login-field-hint login-field-hint--signup">
+                        Must match the password you entered above.
                       </p>
                     </div>
-                  </div>
-                  <div className="login-register-field login-register-field--full">
-                    <div className="login-actions login-actions--single">
+                    <div className="login-actions login-actions--single login-actions--signup-submit">
                       <button
                         type="submit"
                         className="btn btn-primary login-btn-full"
-                        disabled={
-                          !!loading || !accountEmail.trim() || !accountPassword || !accountPassword2
-                        }
+                        disabled={loading || !accountEmail.trim() || !accountPassword || !accountPassword2}
                       >
-                        {loading === 'register' ? <Loader2 size={18} className="spinner" /> : <KeyRound size={18} aria-hidden />}
+                        {loading ? <Loader2 size={18} className="spinner" /> : <KeyRound size={18} aria-hidden />}
                         Create account
                       </button>
                     </div>
-                  </div>
-                </div>
-              </form>
-            </div>
+                  </form>
 
-            <aside className="login-signup-panel-aside" aria-label="Sign in with a GitHub token">
-              <p className="login-signup-aside-eyebrow">Alternative path</p>
-              <h2 className="login-signup-aside-title">Personal access token</h2>
-              <p className="login-hint-muted login-signup-aside-lead">
-                {oauthConfigured
-                  ? 'Use this if you prefer pasting a token instead of browser GitHub on this device.'
-                  : 'Browser GitHub sign-in is not enabled on this deployment—use a token here, or ask your admin to configure OAuth.'}
-              </p>
-              <form
-                className="login-pat-form"
-                noValidate
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void connectWithToken()
-                }}
-              >
-                <div className="input-group login-token-field">
-                  <label htmlFor="signup-pat">Token</label>
-                  <div className="login-password-wrap">
-                    <input
-                      id="signup-pat"
-                      name="github-token"
-                      type={showPat ? 'text' : 'password'}
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      aria-describedby="signup-pat-hint"
-                    />
-                    <button
-                      type="button"
-                      className="login-password-toggle"
-                      onClick={() => setShowPat((v) => !v)}
-                      aria-label={showPat ? 'Hide token' : 'Show token'}
-                      aria-controls="signup-pat"
-                    >
-                      {showPat ? <EyeOff size={18} strokeWidth={2} aria-hidden /> : <Eye size={18} strokeWidth={2} aria-hidden />}
+                  {!oauthConfigured && (
+                    <p className="login-oauth-unavailable-hint">
+                      GitHub sign-in is not configured here—you can still register with email. Your admin can enable OAuth for
+                      one-click GitHub.
+                    </p>
+                  )}
+                </div>
+
+                {(sessionGithub || sessionEmail) && (
+                  <div className="login-session-row">
+                    <span className="scanner-session-pill">
+                      <CheckCircle2 size={14} />
+                      {sessionEmail && (
+                        <>
+                          Signed in as <strong>{sessionEmail}</strong> (email){sessionGithub ? '; ' : ''}
+                        </>
+                      )}
+                      {sessionGithub && (
+                        <>
+                          GitHub <strong>{sessionGithub}</strong>
+                        </>
+                      )}
+                    </span>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
+                      <LogOut size={14} />
+                      Sign out
                     </button>
                   </div>
-                  <p id="signup-pat-hint" className="login-field-hint">
-                    Fine-grained or classic PAT. Scopes should match what your team documents.
-                  </p>
-                </div>
-
-                <div className="login-actions login-actions--single">
-                  <button type="submit" className="btn btn-primary login-btn-full" disabled={!!loading || !token.trim()}>
-                    {loading === 'pat' ? <Loader2 size={18} className="spinner" /> : <KeyRound size={18} aria-hidden />}
-                    Connect with token
-                  </button>
-                </div>
-              </form>
-            </aside>
-          </div>
-
-          {(sessionGithub || sessionEmail) && (
-            <div className="login-session-row">
-              <span className="scanner-session-pill">
-                <CheckCircle2 size={14} />
-                {sessionEmail && (
-                  <>
-                    Signed in as <strong>{sessionEmail}</strong> (email){sessionGithub ? '; ' : ''}
-                  </>
                 )}
-                {sessionGithub && (
-                  <>
-                    GitHub <strong>{sessionGithub}</strong>
-                  </>
-                )}
-              </span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
-                <LogOut size={14} />
-                Sign out
-              </button>
-            </div>
-          )}
+              </div>
             </div>
           </div>
         </div>

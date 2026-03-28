@@ -65,6 +65,7 @@ class AuditLogEntry(BaseModel):
     resource_accessed: str
     source_ip: str
     details: str = ""
+    audit_subject: str = ""
     prev_hash: str = ""
     entry_hash: str = ""
 

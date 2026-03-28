@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Eye, EyeOff, Github, KeyRound, Loader2, AlertTriangle, CheckCircle2, LogOut, Mail } from 'lucide-react'
+import { Eye, EyeOff, Github, Loader2, AlertTriangle, CheckCircle2, LogOut, Mail } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   GITHUB_OAUTH_API_BASE,
@@ -7,7 +7,6 @@ import {
   authLogout,
   authMe,
   scannerGithubDisconnect,
-  scannerGithubPatLogin,
   scannerGithubSession,
   scannerGithubStatus,
 } from './api'
@@ -27,12 +26,10 @@ export function LoginPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [token, setToken] = useState('')
-  const [loading, setLoading] = useState<false | 'pat' | 'email'>(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<'checking' | 'form'>('checking')
   const [showEmailPassword, setShowEmailPassword] = useState(false)
-  const [showPat, setShowPat] = useState(false)
 
   const loadSession = useCallback(async () => {
     try {
@@ -79,7 +76,7 @@ export function LoginPage() {
   const connectGithub = () => {
     if (!oauthConfigured) {
       setError(
-        'One-click GitHub sign-in isn’t available here. Use “Sign in with credential” below, or ask your administrator to enable browser sign-in.',
+        'GitHub sign-in isn’t available on this deployment. Ask your administrator to configure GitHub OAuth, or sign in with email and password.',
       )
       return
     }
@@ -94,32 +91,12 @@ export function LoginPage() {
       setError('Enter your email and password.')
       return
     }
-    setLoading('email')
+    setLoading(true)
     setError(null)
     try {
       await authLogin(em, password)
       setPassword('')
       await loadSession()
-      navigate(fromPath, { replace: true })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sign-in failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const signInWithToken = async () => {
-    const t = token.trim()
-    if (!t) {
-      setError('Enter your GitHub credential.')
-      return
-    }
-    setLoading('pat')
-    setError(null)
-    try {
-      await scannerGithubPatLogin(t)
-      await loadSession()
-      setToken('')
       navigate(fromPath, { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-in failed')
@@ -165,195 +142,149 @@ export function LoginPage() {
       />
 
       <main className="login-page-main">
-        <div className="login-page-split">
-          <div className="login-page-aside">
-            <p className="login-page-eyebrow">Secure access</p>
-            <h1 className="login-page-title">Sign in to continue</h1>
-            <p className="login-page-lead login-page-lead--aside">
-              Sign in with <strong>email and password</strong>, or connect <strong>GitHub</strong> for the same workspace—PDF
-              workflow, tasks, and history stay under your account. Repository scans still need GitHub connected under Settings
-              when you use Compliance.
-            </p>
-          </div>
-          <div className="login-page-form-wrap">
-            <div className="login-panel">
-          {error && (
-            <div className="alert alert-error login-alert" role="alert" aria-live="assertive">
-              <AlertTriangle size={18} aria-hidden />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {oauthConfigured && (
-            <>
-              <div className="login-actions login-actions--oauth-first">
-                <button
-                  type="button"
-                  className="btn btn-primary login-btn-full"
-                  onClick={connectGithub}
-                  disabled={!!loading}
-                >
-                  <Github size={18} strokeWidth={2} aria-hidden />
-                  Continue with GitHub
-                </button>
+        <div className="login-page-shell">
+          <div className="login-panel login-panel--auth-card">
+            <div className="login-panel-body">
+              <div className="login-panel-copy">
+                <p className="login-page-eyebrow">Secure access</p>
+                <h1 className="login-page-title">Sign in to continue</h1>
+                <p className="login-page-lead login-page-lead--in-card">
+                  Sign in with <strong>email and password</strong> or <strong>Continue with GitHub</strong> when your deployment
+                  enables it. Repo scans connect under <strong>Settings → GitHub</strong> when you use Compliance.
+                </p>
               </div>
-              <p className="login-auth-divider" role="separator">
-                Or sign in with email
-              </p>
-            </>
-          )}
+              <div className="login-panel-divider" aria-hidden="true" />
+              <div className="login-panel-fields">
+                {error && (
+                  <div className="alert alert-error login-alert" role="alert" aria-live="assertive">
+                    <AlertTriangle size={18} aria-hidden />
+                    <span>{error}</span>
+                  </div>
+                )}
 
-          <form
-            className="login-email-form"
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault()
-              void signInWithEmail()
-            }}
-          >
-            <div className="input-group login-token-field">
-              <label htmlFor="signin-email">Email</label>
-              <input
-                id="signin-email"
-                name="email"
-                type="email"
-                autoComplete="username"
-                inputMode="email"
-                spellCheck={false}
-                autoCapitalize="none"
-                autoCorrect="off"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="input-group login-token-field">
-              <label htmlFor="current-password">Password</label>
-              <div className="login-password-wrap">
-                <input
-                  id="current-password"
-                  name="password"
-                  type={showEmailPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  aria-describedby="signin-password-hint"
-                />
-                <button
-                  type="button"
-                  className="login-password-toggle"
-                  onClick={() => setShowEmailPassword((v) => !v)}
-                  aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
-                  aria-controls="current-password"
-                >
-                  {showEmailPassword ? <EyeOff size={18} strokeWidth={2} aria-hidden /> : <Eye size={18} strokeWidth={2} aria-hidden />}
-                </button>
-              </div>
-              <p id="signin-password-hint" className="login-field-hint">
-                <Link to="/contact" className="login-forgot-link">
-                  Forgot password?
-                </Link>{' '}
-                ·{' '}
-                <span>Use a password manager if you can.</span>
-              </p>
-            </div>
-
-            <div className="login-actions login-actions--single">
-              <button
-                type="submit"
-                className="btn btn-primary login-btn-full"
-                disabled={!!loading || !email.trim() || !password}
-              >
-                {loading === 'email' ? <Loader2 size={18} className="spinner" /> : <Mail size={18} aria-hidden />}
-                Sign in
-              </button>
-            </div>
-          </form>
-
-          <p className="login-auth-divider" role="separator">
-            Or sign in with a GitHub token
-          </p>
-
-          <form
-            className="login-pat-form"
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault()
-              void signInWithToken()
-            }}
-          >
-            <div className="input-group login-token-field">
-              <label htmlFor="login-pat">GitHub personal access token</label>
-              <div className="login-password-wrap">
-                <input
-                  id="login-pat"
-                  name="github-token"
-                  type={showPat ? 'text' : 'password'}
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  aria-describedby="login-pat-hint"
-                />
-                <button
-                  type="button"
-                  className="login-password-toggle"
-                  onClick={() => setShowPat((v) => !v)}
-                  aria-label={showPat ? 'Hide token' : 'Show token'}
-                  aria-controls="login-pat"
-                >
-                  {showPat ? <EyeOff size={18} strokeWidth={2} aria-hidden /> : <Eye size={18} strokeWidth={2} aria-hidden />}
-                </button>
-              </div>
-              <p id="login-pat-hint" className="login-field-hint">
-                Paste a token with scopes your team documents. One-click GitHub above is safer when available.
-              </p>
-            </div>
-
-            <div className="login-actions login-actions--single">
-              <button type="submit" className="btn btn-primary login-btn-full" disabled={!!loading || !token.trim()}>
-                {loading === 'pat' ? <Loader2 size={18} className="spinner" /> : <KeyRound size={18} aria-hidden />}
-                Sign in with token
-              </button>
-            </div>
-          </form>
-
-          {!oauthConfigured && (
-            <details className="login-details">
-              <summary>Can’t use GitHub in the browser?</summary>
-              <p className="login-details-body">
-                Your team can enable one-click GitHub for RegTranslate Compliance. Until then, sign in with a GitHub
-                credential above.
-              </p>
-            </details>
-          )}
-
-          {(sessionGithub || sessionEmail) && (
-            <div className="login-session-row">
-              <span className="scanner-session-pill">
-                <CheckCircle2 size={14} />
-                {sessionEmail && (
+                {oauthConfigured && (
                   <>
-                    Signed in as <strong>{sessionEmail}</strong> (email){sessionGithub ? '; ' : ''}
+                    <div className="login-actions login-actions--oauth-first">
+                      <button
+                        type="button"
+                        className="btn btn-primary login-btn-full"
+                        onClick={connectGithub}
+                        disabled={loading}
+                      >
+                        <Github size={18} strokeWidth={2} aria-hidden />
+                        Continue with GitHub
+                      </button>
+                    </div>
+                    <p className="login-auth-divider" role="separator">
+                      Or sign in with email
+                    </p>
                   </>
                 )}
-                {sessionGithub && (
-                  <>
-                    GitHub <strong>{sessionGithub}</strong>
-                  </>
+
+                <form
+                  className="login-email-form"
+                  noValidate
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void signInWithEmail()
+                  }}
+                >
+                  <div className="input-group login-token-field">
+                    <label htmlFor="signin-email">Email</label>
+                    <input
+                      id="signin-email"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                      inputMode="email"
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="input-group login-token-field">
+                    <label htmlFor="current-password">Password</label>
+                    <div className="login-password-wrap">
+                      <input
+                        id="current-password"
+                        name="password"
+                        type={showEmailPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        spellCheck={false}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        aria-describedby="signin-password-hint"
+                      />
+                      <button
+                        type="button"
+                        className="login-password-toggle"
+                        onClick={() => setShowEmailPassword((v) => !v)}
+                        aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
+                        aria-controls="current-password"
+                      >
+                        {showEmailPassword ? (
+                          <EyeOff size={18} strokeWidth={2} aria-hidden />
+                        ) : (
+                          <Eye size={18} strokeWidth={2} aria-hidden />
+                        )}
+                      </button>
+                    </div>
+                    <div id="signin-password-hint" className="login-field-hint login-field-hint--stacked">
+                      <Link to="/contact" className="login-forgot-link">
+                        Forgot password?
+                      </Link>
+                      <span className="login-field-hint-sub">A password manager keeps this safer and easier.</span>
+                    </div>
+                  </div>
+
+                  <div className="login-actions login-actions--single">
+                    <button
+                      type="submit"
+                      className="btn btn-primary login-btn-full"
+                      disabled={loading || !email.trim() || !password}
+                    >
+                      {loading ? <Loader2 size={18} className="spinner" /> : <Mail size={18} aria-hidden />}
+                      Sign in
+                    </button>
+                  </div>
+                </form>
+
+                {!oauthConfigured && (
+                  <p className="login-oauth-unavailable-hint">
+                    GitHub sign-in is not configured here—you can still use email and password. Your admin can enable OAuth for
+                    one-click GitHub.
+                  </p>
                 )}
-              </span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
-                <LogOut size={14} />
-                Sign out
-              </button>
-            </div>
-          )}
+
+                {(sessionGithub || sessionEmail) && (
+                  <div className="login-session-row">
+                    <span className="scanner-session-pill">
+                      <CheckCircle2 size={14} />
+                      {sessionEmail && (
+                        <>
+                          Signed in as <strong>{sessionEmail}</strong> (email){sessionGithub ? '; ' : ''}
+                        </>
+                      )}
+                      {sessionGithub && (
+                        <>
+                          GitHub <strong>{sessionGithub}</strong>
+                        </>
+                      )}
+                    </span>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void disconnect()}>
+                      <LogOut size={14} />
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

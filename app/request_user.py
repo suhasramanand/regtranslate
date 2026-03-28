@@ -34,6 +34,28 @@ def require_auth_enabled() -> bool:
     return os.getenv("REGTRANSLATE_REQUIRE_AUTH", "1").strip().lower() not in ("0", "false", "no")
 
 
+def audit_subject_for_request(request: Request) -> str:
+    """
+    Human-readable actor for § 2.2.1 audit entries (reviewers).
+    Prefer GitHub login or email profile; falls back to tenant id.
+    """
+    from app.scanner_auth_bridge import github_login_from_request
+    from app.services import email_auth_store
+
+    gh = github_login_from_request(request)
+    if gh:
+        return f"github:{gh}"
+    sid = request.cookies.get(email_auth_store.RT_SESSION_COOKIE)
+    row = email_auth_store.get_session_user(sid)
+    if row:
+        internal = str(row.get("user_id") or "")
+        return email_auth_store.format_audit_subject({**row, "user_id": internal})
+    try:
+        return get_rt_user()
+    except Exception:
+        return "unknown"
+
+
 def resolve_user_for_request(request: Request) -> str | None:
     """
     Returns GitHub login bucket id, or __local__ / __demo__ for open / demo installs.

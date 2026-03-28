@@ -50,8 +50,11 @@ import {
   appendAuditLog,
   resetAllData,
   authLogout,
+  authMe,
+  authUpdateProfile,
   scannerGithubDisconnect,
 } from './api'
+import type { AuthMeResponse, AuditLogEntry } from './api'
 import type { ExtractionTask } from './types'
 import { Tooltip } from './Tooltip'
 import { useTheme } from './useTheme'
@@ -187,7 +190,7 @@ export function Dashboard() {
     if (v === 'history' || v === 'audit' || v === 'settings') return v
     return 'main'
   })
-  const [auditEntries, setAuditEntries] = useState<Array<{ timestamp: string; user_id: string; action: string; resource_accessed: string; source_ip: string; details: string }>>([])
+  const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [coverage, setCoverage] = useState<{ chunk_count: number; pages_summary: string; sections: string[]; section_4_in_chunks: boolean } | null>(null)
@@ -220,9 +223,27 @@ export function Dashboard() {
   const [searchParams] = useSearchParams()
   const isDemoMode = searchParams.get('demo') === '1'
   const viewParam = searchParams.get('view')
+  const [authSession, setAuthSession] = useState<AuthMeResponse | null>(null)
   const [demoMessage, setDemoMessage] = useState<{ title: string; body: string } | null>(null)
   const [demoZoom, setDemoZoom] = useState<'normal' | 'zoom-in' | 'zoom-focus'>('zoom-in')
   const demoAutoPlayRef = useRef<boolean>(false)
+
+  const refreshAuth = useCallback(() => {
+    if (isDemoMode) {
+      setAuthSession({
+        authenticated: true,
+        method: 'demo',
+        user_id: '__demo__',
+        audit_subject: 'guided-demo',
+      })
+      return
+    }
+    authMe().then(setAuthSession).catch(() => setAuthSession({ authenticated: false }))
+  }, [isDemoMode])
+
+  useEffect(() => {
+    refreshAuth()
+  }, [refreshAuth])
 
   useEffect(() => {
     if (isDemoMode) {
@@ -637,7 +658,7 @@ export function Dashboard() {
   }
 
   const logAudit = useCallback((action: string, resource: string, details: string) => {
-    appendAuditLog({ user_id: 'web-ui', action, resource_accessed: resource, details }).catch(() => {})
+    appendAuditLog({ action, resource_accessed: resource, details }).catch(() => {})
   }, [])
 
   const effectiveRegulation = regulationName === 'Custom' && customRegulation.trim() ? customRegulation.trim() : regulationName
@@ -1154,6 +1175,8 @@ export function Dashboard() {
           ) : page === 'settings' ? (
             <SettingsPage
               isDemoMode={isDemoMode}
+              authSession={authSession}
+              onRefreshAuth={refreshAuth}
               onResetAll={() => setShowClearConfirm(true)}
               onSignOut={async () => {
                 try {
@@ -1756,6 +1779,8 @@ export function Dashboard() {
 
 function SettingsPage({
   isDemoMode,
+  authSession,
+  onRefreshAuth,
   onResetAll,
   onSignOut,
   loading,
@@ -1773,6 +1798,8 @@ function SettingsPage({
   setGhToken,
 }: {
   isDemoMode: boolean
+  authSession: AuthMeResponse | null
+  onRefreshAuth: () => void
   onResetAll: () => void
   onSignOut: () => void | Promise<void>
   loading: boolean
@@ -1789,84 +1816,179 @@ function SettingsPage({
   ghToken: string
   setGhToken: (v: string) => void
 }) {
+  const [profileDisplayName, setProfileDisplayName] = useState('')
+  const [profileOrg, setProfileOrg] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileFlash, setProfileFlash] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (authSession?.method === 'email') {
+      setProfileDisplayName(authSession.display_name ?? '')
+      setProfileOrg(authSession.organization ?? '')
+    } else {
+      setProfileDisplayName('')
+      setProfileOrg('')
+    }
+  }, [authSession?.method, authSession?.display_name, authSession?.organization])
+
+  const auditLabel = authSession?.audit_subject?.trim() || authSession?.user_id || '—'
+
   return (
-    <>
-      <div className="settings-cards">
-        <ComplianceScannerGithubSettings isDemoMode={isDemoMode} />
-        <div className="card">
-          <h3 className="settings-card-title">
-            <ShieldCheck size={18} aria-hidden />
-            Account
-          </h3>
-          <p className="settings-card-desc">
-            Sign out of RegTranslate and end your GitHub session (PDF workflow and scanner).
-          </p>
-          <button type="button" className="btn btn-secondary" onClick={() => onSignOut()}>
-            Sign out
-          </button>
+    <div className="settings-page" role="group" aria-label="Workspace settings">
+      <div className="settings-page-cols">
+        <div className="settings-page-col">
+          <ComplianceScannerGithubSettings isDemoMode={isDemoMode} />
+          <div className="card settings-card--account">
+            <h3 className="settings-card-title">
+              <ShieldCheck size={18} aria-hidden />
+              Account
+            </h3>
+            <p className="settings-card-desc settings-card-desc--tight">
+              Name and organization appear on the audit trail for email accounts. GitHub accounts use your login automatically.
+            </p>
+            <div className="settings-account-audit-subject" style={{ marginBottom: 'var(--space-3)' }}>
+              <span className="settings-muted-label">Audit identity</span>{' '}
+              <code className="settings-audit-subject-code">{auditLabel}</code>
+            </div>
+            {!isDemoMode && authSession?.authenticated && authSession.method === 'email' && (
+              <div className="settings-field-grid" style={{ marginBottom: 'var(--space-3)' }}>
+                <div className="input-group">
+                  <label htmlFor="settings-display-name">Display name</label>
+                  <input
+                    id="settings-display-name"
+                    type="text"
+                    value={profileDisplayName}
+                    onChange={(e) => setProfileDisplayName(e.target.value)}
+                    placeholder="e.g. Jane Doe"
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="input-group">
+                  <label htmlFor="settings-organization">Organization</label>
+                  <input
+                    id="settings-organization"
+                    type="text"
+                    value={profileOrg}
+                    onChange={(e) => setProfileOrg(e.target.value)}
+                    placeholder="e.g. Acme Compliance"
+                    autoComplete="organization"
+                  />
+                </div>
+                <div className="settings-profile-actions" style={{ gridColumn: '1 / -1' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={profileSaving}
+                    onClick={async () => {
+                      setProfileSaving(true)
+                      setProfileFlash(null)
+                      try {
+                        await authUpdateProfile({ display_name: profileDisplayName, organization: profileOrg })
+                        setProfileFlash('Profile saved.')
+                        onRefreshAuth()
+                      } catch (e) {
+                        setProfileFlash(e instanceof Error ? e.message : 'Could not save profile')
+                      } finally {
+                        setProfileSaving(false)
+                      }
+                    }}
+                  >
+                    {profileSaving ? <Loader2 size={16} className="spinner" /> : <Check size={16} />}
+                    {profileSaving ? 'Saving…' : 'Save profile'}
+                  </button>
+                  {profileFlash && (
+                    <span className={profileFlash.startsWith('Profile') ? 'settings-profile-ok' : 'settings-profile-err'} style={{ marginLeft: 'var(--space-2)' }}>
+                      {profileFlash}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {!isDemoMode && authSession?.authenticated && authSession.method === 'github' && authSession.github_login && (
+              <p className="settings-card-desc settings-card-desc--tight" style={{ marginBottom: 'var(--space-3)' }}>
+                Signed in with GitHub as <strong>{authSession.github_login}</strong>.
+              </p>
+            )}
+            <p className="settings-card-desc settings-card-desc--tight">
+              Sign out of RegTranslate and your GitHub session.
+            </p>
+            <button type="button" className="btn btn-secondary" onClick={() => onSignOut()}>
+              Sign out
+            </button>
+          </div>
         </div>
-        <div className="card">
-          <h3 className="settings-card-title">
-            <FileCode size={18} aria-hidden />
-            Jira
-          </h3>
-          <p className="settings-card-desc">
-            Used for exports from the PDF workflow and Compliance Scanner.
-          </p>
-          <div className="input-group">
-            <Tooltip content="Jira project key (e.g. PROJ)">
-              <label htmlFor="settings-jira-project">Project key</label>
-            </Tooltip>
-            <input id="settings-jira-project" type="text" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} placeholder="PROJ" />
+        <div className="settings-page-col">
+          <div className="card settings-card--integration">
+            <h3 className="settings-card-title">
+              <FileCode size={18} aria-hidden />
+              Jira
+            </h3>
+            <p className="settings-card-desc settings-card-desc--tight">
+              Defaults for exports from the PDF workflow and Compliance Scanner.
+            </p>
+            <div className="settings-field-grid">
+              <div className="input-group">
+                <Tooltip content="Jira project key (e.g. PROJ)">
+                  <label htmlFor="settings-jira-project">Project key</label>
+                </Tooltip>
+                <input id="settings-jira-project" type="text" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} placeholder="PROJ" />
+              </div>
+              <div className="input-group">
+                <Tooltip content="Your Atlassian Jira instance URL">
+                  <label htmlFor="settings-jira-url">URL</label>
+                </Tooltip>
+                <input id="settings-jira-url" type="text" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} placeholder="https://your-domain.atlassian.net" />
+              </div>
+              <div className="input-group">
+                <Tooltip content="Email you use to sign in to Jira">
+                  <label htmlFor="settings-jira-email">Email</label>
+                </Tooltip>
+                <input id="settings-jira-email" type="text" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder="you@company.com" />
+              </div>
+              <div className="input-group">
+                <Tooltip content="From your Atlassian account, if your Jira site requires it.">
+                  <label htmlFor="settings-jira-token">Jira credential</label>
+                </Tooltip>
+                <input id="settings-jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
+              </div>
+            </div>
           </div>
-          <div className="input-group">
-            <Tooltip content="Your Atlassian Jira instance URL">
-              <label htmlFor="settings-jira-url">URL</label>
-            </Tooltip>
-            <input id="settings-jira-url" type="text" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} placeholder="https://your-domain.atlassian.net" />
-          </div>
-          <div className="input-group">
-            <Tooltip content="Email you use to sign in to Jira">
-              <label htmlFor="settings-jira-email">Email</label>
-            </Tooltip>
-            <input id="settings-jira-email" type="text" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder="you@company.com" />
-          </div>
-          <div className="input-group">
-            <Tooltip content="From your Atlassian account, if your Jira site requires it.">
-              <label htmlFor="settings-jira-token">Jira credential</label>
-            </Tooltip>
-            <input id="settings-jira-token" type="password" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
+          <div className="card settings-card--integration">
+            <h3 className="settings-card-title">
+              <Github size={18} aria-hidden />
+              GitHub export
+            </h3>
+            <p className="settings-card-desc settings-card-desc--tight">
+              Repo and token for issue export (separate from sign-in above).
+            </p>
+            <div className="settings-field-grid settings-field-grid--two">
+              <div className="input-group">
+                <Tooltip content="Repository as owner/name (e.g. owner/repo)">
+                  <label htmlFor="settings-gh-repo">Repository</label>
+                </Tooltip>
+                <input id="settings-gh-repo" type="text" value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="owner/repo" />
+              </div>
+              <div className="input-group">
+                <Tooltip content="GitHub credential for repository exports.">
+                  <label htmlFor="settings-gh-token">GitHub credential</label>
+                </Tooltip>
+                <input id="settings-gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
+              </div>
+            </div>
           </div>
         </div>
-        <div className="card">
-          <h3 className="settings-card-title">
-            <Github size={18} aria-hidden />
-            GitHub
-          </h3>
-          <p className="settings-card-desc">
-            Repository and credential for creating issues from export.
-          </p>
-          <div className="input-group">
-            <Tooltip content="Repository as owner/name (e.g. owner/repo)">
-              <label htmlFor="settings-gh-repo">Repository</label>
-            </Tooltip>
-            <input id="settings-gh-repo" type="text" value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="owner/repo" />
+      </div>
+      <div className="card settings-card--clear-strip">
+        <div className="settings-clear-strip-inner">
+          <div className="settings-clear-strip-copy">
+            <h3 className="settings-card-title">Clear all data</h3>
+            <p className="settings-card-desc settings-card-desc--flush">
+              Removes documents, tasks, audit logs, export history, regulation versions, and calibration. Can&apos;t be undone.
+            </p>
           </div>
-          <div className="input-group">
-            <Tooltip content="GitHub credential for repository exports.">
-              <label htmlFor="settings-gh-token">GitHub credential</label>
-            </Tooltip>
-            <input id="settings-gh-token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="••••••••" autoComplete="off" />
-          </div>
-        </div>
-        <div className="card">
-          <h3 className="settings-card-title">Clear all data</h3>
-          <p className="settings-card-desc">
-            Removes documents, tasks, audit logs, export history, regulation versions, and calibration data. You can&apos;t undo this.
-          </p>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary settings-clear-btn"
             onClick={onResetAll}
             disabled={loading}
             style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
@@ -1876,14 +1998,14 @@ function SettingsPage({
           </button>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
 function AuditPage({
   entries,
 }: {
-  entries: Array<{ timestamp: string; user_id: string; action: string; resource_accessed: string; source_ip: string; details: string }>
+  entries: AuditLogEntry[]
 }) {
   const formatDate = (ts: string) => {
     try {
@@ -1907,7 +2029,10 @@ function AuditPage({
                 <span className="audit-date">{formatDate(e.timestamp)}</span>
               </div>
               <div className="audit-card-body">
-                <div className="audit-meta">User: <strong>{e.user_id}</strong> · Resource: <code>{e.resource_accessed}</code></div>
+                <div className="audit-meta">
+                  Subject: <strong>{e.audit_subject?.trim() ? e.audit_subject : e.user_id}</strong> · Resource:{' '}
+                  <code>{e.resource_accessed}</code>
+                </div>
                 {e.details && <div className="audit-details">{e.details}</div>}
                 <div className="audit-meta">IP: {e.source_ip}</div>
               </div>

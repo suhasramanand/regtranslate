@@ -40,6 +40,7 @@ def _serialize(entry: AuditLogEntry) -> dict[str, Any]:
         "resource_accessed": entry.resource_accessed,
         "source_ip": entry.source_ip,
         "details": entry.details,
+        "audit_subject": entry.audit_subject,
         "prev_hash": entry.prev_hash,
         "entry_hash": entry.entry_hash,
     }
@@ -51,6 +52,7 @@ def append_entry(
     resource_accessed: str,
     source_ip: str,
     details: str = "",
+    audit_subject: str = "",
 ) -> AuditLogEntry:
     """Append a tamper-evident log entry. Uses hash chain."""
     chain_path = _chain_file()
@@ -72,6 +74,7 @@ def append_entry(
         "resource_accessed": resource_accessed,
         "source_ip": source_ip,
         "details": details,
+        "audit_subject": audit_subject,
     }
     entry_hash = _hash_entry(prev_hash, payload)
     entry = AuditLogEntry(
@@ -81,6 +84,7 @@ def append_entry(
         resource_accessed=resource_accessed,
         source_ip=source_ip,
         details=details,
+        audit_subject=audit_subject,
         prev_hash=prev_hash,
         entry_hash=entry_hash,
     )

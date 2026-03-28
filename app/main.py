@@ -4,7 +4,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, FastAPI, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -212,6 +212,11 @@ class AuthLoginBody(BaseModel):
     password: str
 
 
+class AuthProfilePatchBody(BaseModel):
+    display_name: str = ""
+    organization: str = ""
+
+
 def _set_rt_session_cookie(response: Response, session_id: str) -> None:
     from app.services.email_auth_store import RT_SESSION_COOKIE, SESSION_MAX_AGE_SECONDS
 
@@ -238,21 +243,42 @@ def _auth_session_payload(request: Request) -> dict:
     from app.services import email_auth_store
 
     if not require_auth_enabled():
-        return {"authenticated": True, "method": "dev", "user_id": "__local__"}
+        return {
+            "authenticated": True,
+            "method": "dev",
+            "user_id": "__local__",
+            "audit_subject": "local-dev",
+        }
     if (request.headers.get("x-regtranslate-demo") or "").strip() == "1":
-        return {"authenticated": True, "method": "demo", "user_id": "__demo__"}
+        return {
+            "authenticated": True,
+            "method": "demo",
+            "user_id": "__demo__",
+            "audit_subject": "guided-demo",
+        }
     gh = github_login_from_request(request)
     if gh:
-        return {"authenticated": True, "method": "github", "github_login": gh, "user_id": gh}
+        return {
+            "authenticated": True,
+            "method": "github",
+            "github_login": gh,
+            "user_id": gh,
+            "audit_subject": f"github:{gh}",
+        }
     sid = request.cookies.get(email_auth_store.RT_SESSION_COOKIE)
     row = email_auth_store.get_session_user(sid)
     if row:
         uid = row["user_id"]
+        tenant = email_auth_store.tenant_id_for_user(uid)
+        r = dict(row)
         return {
             "authenticated": True,
             "method": "email",
             "email": row["email"],
-            "user_id": email_auth_store.tenant_id_for_user(uid),
+            "display_name": str(r.get("display_name") or ""),
+            "organization": str(r.get("organization") or ""),
+            "user_id": tenant,
+            "audit_subject": email_auth_store.format_audit_subject({**r, "user_id": uid}),
         }
     return {"authenticated": False}
 
@@ -307,6 +333,35 @@ def auth_logout(request: Request, response: Response):
     email_auth_store.delete_session(sid)
     _clear_rt_session_cookie(response)
     return {"ok": True}
+
+
+@api.patch("/auth/profile")
+def auth_profile_patch(request: Request, body: AuthProfilePatchBody):
+    """Display name and organization for email accounts (audit / § 2.2.1 reviewer clarity)."""
+    from app.scanner_auth_bridge import github_login_from_request
+    from app.services import email_auth_store
+
+    if github_login_from_request(request):
+        raise HTTPException(
+            400,
+            "Profile name and organization apply to email accounts. You are signed in with GitHub.",
+        )
+    sid = request.cookies.get(email_auth_store.RT_SESSION_COOKIE)
+    row = email_auth_store.get_session_user(sid)
+    if not row:
+        raise HTTPException(401, "Not signed in")
+    try:
+        email_auth_store.update_user_profile(
+            internal_user_id=row["user_id"],
+            display_name=body.display_name,
+            organization=body.organization,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    dn = (body.display_name or "").strip()[:200]
+    org = (body.organization or "").strip()[:200]
+    refreshed = email_auth_store.format_audit_subject({**row, "display_name": dn, "organization": org})
+    return {"ok": True, "display_name": dn, "organization": org, "audit_subject": refreshed}
 
 
 @api.get("/config/jira")
@@ -767,10 +822,9 @@ def get_export_history(limit: int = 100):
 
 
 class AuditLogAppendRequest(BaseModel):
-    user_id: str
     action: str
     resource_accessed: str
-    source_ip: str
+    source_ip: str = ""
     details: str = ""
 
 
@@ -783,16 +837,23 @@ class AuditReviewCreateRequest(BaseModel):
 
 
 @api.post("/audit/log")
-def audit_append(req: AuditLogAppendRequest, x_forwarded_for: str | None = None):
-    """Append a tamper-evident audit log entry (timestamp, user_id, action, resource, source_ip)."""
+def audit_append(
+    request: Request,
+    req: AuditLogAppendRequest,
+    x_forwarded_for: str | None = Header(None),
+):
+    """Append a tamper-evident audit log entry. Tenant user_id and audit_subject are taken from the session."""
+    from app.request_user import audit_subject_for_request, get_rt_user
     from app.services import audit_log as audit_svc
+
     source_ip = (x_forwarded_for or "").split(",")[0].strip() or req.source_ip
     entry = audit_svc.append_entry(
-        user_id=req.user_id,
+        user_id=get_rt_user(),
         action=req.action,
         resource_accessed=req.resource_accessed,
         source_ip=source_ip,
         details=req.details,
+        audit_subject=audit_subject_for_request(request),
     )
     return {"ok": True, "entry_hash": entry.entry_hash}
 
